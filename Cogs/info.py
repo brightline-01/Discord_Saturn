@@ -62,7 +62,7 @@ class info(commands.Cog):
         embed.set_thumbnail(url=self.bot.user.display_avatar.url)
         embed.add_field(name="앱 개발자", value="세린 (.__serin__.)", inline=True)
         embed.add_field(name="앱 이름", value="Saturn", inline=True)
-        embed.add_field(name="앱 버전", value="1.1", inline=True)
+        embed.add_field(name="앱 버전", value="1.2", inline=True)
         embed.add_field(name="서버 CPU 사용률", value=f"{psutil.cpu_percent(interval=1)}%", inline=True)
         embed.add_field(name="서버 메모리", value=f"{virtual_memory.total / (1024**3):.2f} GB", inline=True)
         embed.add_field(name="서버 메모리 사용률", value=f"{virtual_memory.percent}%", inline=True)
