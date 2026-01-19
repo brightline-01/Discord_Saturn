@@ -71,7 +71,7 @@ class info(commands.Cog):
         embed.add_field(name="Python 버전", value="3.13.9", inline=True)
         embed.add_field(name="사용 중인 모듈", value="py-cord, asyncio, yt-dlp, json, os, psutil, googletrans, timedelta", inline=False)
         embed.add_field(name="서버 CPU", value="11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz", inline=False)
-        embed.add_field(name="서버 OS", value="Microsoft Windows 11 Pro (10.0.26200.6584)", inline=False)
+        embed.add_field(name="서버 OS", value="Microsoft Windows 10 Pro (10.0.19045.6332)", inline=False)
         embed.set_footer(text=f"일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         await ctx.respond(embed=embed)
         print(f"[Command | Info] 애플리케이션 정보를 요청했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")

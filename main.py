@@ -20,7 +20,7 @@ async def on_ready():
     print('[Launcher] 애플리케이션과 연결했습니다.')
     print(f'애플리케이션 이름: {bot.user}')
     print(f'애플리케이션 ID: {bot.user.id}')
-    print(f'애플리케이션 버전: v1.1pre')
+    print(f'애플리케이션 버전: v1.2')
     print('-----------------------------------')
     print(' ')
     await bot.sync_commands(guild_ids=[1438020017235951639])

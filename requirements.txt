@@ -4,6 +4,7 @@ aiosignal==1.4.0
 anyio==4.12.1
 asyncio==4.0.0
 attrs==25.4.0
+audioop-lts==0.2.2
 certifi==2026.1.4
 cffi==2.0.0
 charset-normalizer==3.4.4
@@ -22,7 +23,6 @@ psutil==7.2.1
 py-cord==2.7.0
 pycparser==2.23
 PyNaCl==1.6.2
-requests==2.32.5
 timedelta==2020.12.3
 typing_extensions==4.15.0
 urllib3==2.6.3
