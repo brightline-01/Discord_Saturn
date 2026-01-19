@@ -3,7 +3,7 @@ import datetime
 import sys
 import os
 from discord.ext import commands
-from bot_token_pre import token
+from bot_token import token
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="::", intents=intents)

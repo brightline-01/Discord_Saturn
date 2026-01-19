@@ -1,2 +1,9 @@
 bot_token.py
 bot_token_pre.py
+server_settings.json
+server_threshold.json
+ticket_data.json
+ticket_settings.json
+__pycache__
+logs
+Cogs/__pycache__
