@@ -247,6 +247,7 @@ class music(commands.Cog):
             await ctx.respond(embed=discord.Embed(description=":white_check_mark: 재생 중인 음악을 건너뛰기했습니다."))
             return print(f"[Command | Music] 사용자가 음악을 건너뛰기했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
 
+        # 스킵 투표 생성
         view = SkipVoteView()
         await ctx.respond(embed=discord.Embed(description=":white_check_mark: 음성 채널에 사용자가 2명 이상이므로 건너뛰기 투표를 시작합니다. 현재 곡을 건너뛰려면 30초 내에 ✅ 투표를 추가하십시오. 사용자의 반 이상이 찬성할 시 음악을 건너뛰기합니다."), view=view)
         await view.wait()
