@@ -23,7 +23,7 @@ async def on_ready():
     print(f'애플리케이션 버전: v1.2')
     print('-----------------------------------')
     print(' ')
-    await bot.sync_commands(guild_ids=[1438020017235951639])
+    await bot.sync_commands()
     
 os.makedirs("logs", exist_ok=True)
 log_file = open(f"logs/botlog_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt", "a", encoding="utf-8")
