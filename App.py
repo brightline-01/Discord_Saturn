@@ -1,4 +1,4 @@
-import discord
+import discord, os
 from Token import APP_TOKEN
 
 bot = discord.Bot()

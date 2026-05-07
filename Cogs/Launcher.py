@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from Config import APP_NAME, APP_VER
 
-# 애플리케이션의 초기 실행 및 Presence 변경을 담당하는 Cog입니다.
+# 애플리케이션과 연결 및 Presence 변경을 담당하는 Cog
 class Launcher(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -13,14 +13,12 @@ class Launcher(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         # 런처 실행 로그 출력
-        print(' ')
         print('-----------------------------------')
         print('[Launcher] 애플리케이션과 연결했습니다.')
         print(f'애플리케이션 이름: {APP_NAME}')
         print(f'애플리케이션 ID: {self.bot.user.id}')
         print(f'애플리케이션 버전: {APP_VER}')
         print('-----------------------------------')
-        print(' ')
 
         # Presence 변경 작업이 실행 중이지 않으면 시작
         if not self.Change_Presence.is_running():
@@ -45,5 +43,5 @@ class Launcher(commands.Cog):
         # 애플리케이션이 준비될 때까지 대기
         await self.bot.wait_until_ready()
 
-async def setup(bot):
-    await bot.add_cog(Launcher(bot))
+def setup(bot):
+    bot.add_cog(Launcher(bot))
