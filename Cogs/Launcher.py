@@ -19,7 +19,10 @@ class Launcher(commands.Cog):
         print(f'애플리케이션 ID: {self.bot.user.id}')
         print(f'애플리케이션 버전: {APP_VER}')
         print('-----------------------------------')
-        await bot.sync_commands(guild_ids=[1463547097285398529])
+
+        # 슬래쉬 커맨드 동기화 스크립트
+        await self.bot.sync_commands(guild_ids=[1463547097285398529])
+        print('[Launcher] 슬래쉬 커맨드를 동기화했습니다.')
 
         # Presence 변경 작업이 실행 중이지 않으면 시작
         if not self.Change_Presence.is_running():
