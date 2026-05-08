@@ -9,6 +9,7 @@ class Info(commands.Cog):
 
     Info_CMDGroup = discord.SlashCommandGroup("정보")
 
+    # /정보 사용자 [@사용자]
     @Info_CMDGroup.command(name="사용자", description="사용자의 정보를 표시합니다.")
     async def Info_Member(self, ctx, member: discord.Option(discord.Member, name="사용자", description="정보를 표시할 사용자 (선택)", required=False) = None):
         if member is None:
@@ -32,6 +33,7 @@ class Info(commands.Cog):
         await ctx.respond(embed=embed)
         print(f"[Info] 사용자 정보를 표시했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {member.name})")
 
+    # /정보 서버
     @Info_CMDGroup.command(name="서버", description="현재 서버의 정보를 표시합니다.")
     async def server(self, ctx):
         Users = sum(1 for member in ctx.guild.members if not member.bot)
@@ -62,6 +64,7 @@ class Info(commands.Cog):
         await ctx.respond(embed=embed)
         print(f"[Info] 서버 정보를 표시했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name})")
 
+    # /정보 앱
     @Info_CMDGroup.command(name="앱", description="애플리케이션의 정보를 표시합니다.")
     async def info(self, ctx):
         RAM = psutil.virtual_memory()
