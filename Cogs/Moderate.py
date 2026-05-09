@@ -28,7 +28,8 @@ def Parse_Duration(duration: str):
 class Moderate(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.Timeout_Data_Path = "Resources/Timeout_Data.json"
+        self.Timeout_Data_Path = "Datas/Timeout_Data.json"
+        self.Timeout_Tasks = {}
         
         # 애플리케이션이 실행되면 저장된 타임아웃 정보를 복원
         self.bot.loop.create_task(self.Restore_Timeouts())
@@ -82,8 +83,15 @@ class Moderate(commands.Cog):
             # 멤버의 타임아웃 잔여 기간 계산
             if Member.communication_disabled_until:
                 Applied_Remaining = Member.communication_disabled_until - discord.utils.utcnow()
+                
+                # 기존 태스크가 있다면 취소
+                Task_Key = f"{Guild.id}_{Member.id}"
+                if Task_Key in self.Timeout_Tasks:
+                    self.Timeout_Tasks[Task_Key].cancel()
+
                 # 백그라운드 태스크 재시작
-                self.bot.loop.create_task(self.Auto_Extend_Timeout(Member, Applied_Remaining, Remaining, Info.get('Reason', '사유 없음')))
+                Task = self.bot.loop.create_task(self.Auto_Extend_Timeout(Member, Applied_Remaining, Remaining, Info.get('Reason', '사유 없음')))
+                self.Timeout_Tasks[Task_Key] = Task
             else:
                 # 타임아웃이 해제되어 있으면 키 제거
                 del Timeouts[Key]
@@ -114,7 +122,7 @@ class Moderate(commands.Cog):
             embed = discord.Embed(title=f"⚠️ {member.display_name}님을 서버에서 추방했습니다.", color=discord.Color.red())
             embed.add_field(name="사유", value=reason, inline=True)
             embed.add_field(name="요청자", value=ctx.author.display_name, inline=True)
-            embed.set_thumbnail(url=member.avatar.url)
+            embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"일시: {Current_Time()}")
             await ctx.respond(embed=embed)
             print(f"[Moderate] 사용자를 추방했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {member.name})")
@@ -124,8 +132,10 @@ class Moderate(commands.Cog):
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"추방 중 오류가 발생했습니다. ({e})"), ephemeral=True)
 
-    # /관리 차단 [@사용자 / 사용자 ID] [사유] [메세지 (예/아니요)]
-    @Moderate_CMDGroup.command(name="차단", description="사용자를 서버에서 차단합니다. 멤버 차단하기 권한을 요구합니다.")
+    Ban_CMDGroup = Moderate_CMDGroup.create_subgroup("차단")
+
+    # /관리 차단 부여 [@사용자 / 사용자 ID] [사유] [메세지 (예/아니요)]
+    @Ban_CMDGroup.command(name="부여", description="사용자를 서버에서 차단합니다. 멤버 차단하기 권한을 요구합니다.")
     @discord.default_permissions(ban_members=True)
     async def Ban_Member(self, ctx,
         user: discord.Option(str, name="사용자", description="차단할 사용자의 멘션 또는 사용자 ID를 입력하세요."),
@@ -169,7 +179,7 @@ class Moderate(commands.Cog):
             embed = discord.Embed(title=f"🔨 {Target_User.display_name}님을 서버에서 차단했습니다.", color=discord.Color.red())
             embed.add_field(name="사유", value=reason, inline=True)
             embed.add_field(name="요청자", value=ctx.author.display_name, inline=True)
-            embed.set_thumbnail(url=Target_User.avatar.url)
+            embed.set_thumbnail(url=Target_User.display_avatar.url)
             embed.set_footer(text=f"일시: {Current_Time()}")
             await ctx.respond(embed=embed)
             print(f"[Moderate] 사용자를 차단했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {Target_User.name})")
@@ -189,9 +199,7 @@ class Moderate(commands.Cog):
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"차단 중 오류가 발생했습니다. ({e})"), ephemeral=True)
 
-    Ban_CMDGroup = Moderate_CMDGroup.create_subgroup("차단")
-
-    # /관리 차단해제 [@사용자 / 사용자 ID] [사유]
+    # /관리 차단 해제 [@사용자 / 사용자 ID] [사유]
     @Ban_CMDGroup.command(name="해제", description="사용자의 차단을 해제합니다. 멤버 차단하기 권한을 요구합니다.")
     @discord.default_permissions(ban_members=True)
     async def Unban_Member(self, ctx,
@@ -216,7 +224,7 @@ class Moderate(commands.Cog):
             embed = discord.Embed(title=f"✅ {Target_User.display_name}님의 차단을 해제했습니다.", color=discord.Color.green())
             embed.add_field(name="사유", value=reason, inline=True)
             embed.add_field(name="요청자", value=ctx.author.display_name, inline=True)
-            embed.set_thumbnail(url=Target_User.avatar.url)
+            embed.set_thumbnail(url=Target_User.display_avatar.url)
             embed.set_footer(text=f"일시: {Current_Time()}")
             await ctx.respond(embed=embed)
             print(f"[Moderate] 사용자의 차단을 해제했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {Target_User.name})")
@@ -231,43 +239,43 @@ class Moderate(commands.Cog):
 
     # 타임아웃 자동 연장 스크립트
     async def Auto_Extend_Timeout(self, member: discord.Member, applied_duration: datetime.timedelta, remaining_duration: datetime.timedelta, reason: str):
-        while remaining_duration.total_seconds() > 0:
-            # 이전에 적용된 타임아웃 기간이 끝나기 10초 전까지 대기
-            Wait_Seconds = applied_duration.total_seconds()
-            await asyncio.sleep(Wait_Seconds - 10 if Wait_Seconds > 10 else Wait_Seconds)
+        Task_Key = f"{member.guild.id}_{member.id}"
+        try:
+            while remaining_duration.total_seconds() > 0:
+                # 현재 적용된 타임아웃이 종료되기 10초 전까지 대기
+                Wait_Seconds = applied_duration.total_seconds() - 10
+                if Wait_Seconds > 0:
+                    await asyncio.sleep(Wait_Seconds)
 
-            # 멤버가 서버에 존재하는지 확인
-            Current_Member = member.guild.get_member(member.id)
-            if not Current_Member or not Current_Member.timed_out:
-                # 멤버가 서버를 나갔거나 타임아웃이 수동으로 해제된 경우 중단 및 데이터 삭제
-                Timeouts = self.Load_Timeouts()
-                Key = f"{member.guild.id}_{member.id}"
-                if Key in Timeouts:
-                    del Timeouts[Key]
-                    self.Save_Timeouts(Timeouts)
-                break
+                # 정확한 대기를 위해 멤버 객체 갱신 및 재확인
+                member = await member.guild.fetch_member(member.id)
+                if not member or not member.is_timed_out():
+                    break
 
-            # 다음 연장 기간 계산 (최대 28일)
-            Next_Apply = min(remaining_duration, datetime.timedelta(days=28))
-            try:
-                await Current_Member.timeout(Next_Apply, reason=f"[자동 연장] {reason}")
-                remaining_duration -= Next_Apply
-                applied_duration = Next_Apply # 다음 대기 시간을 위해 갱신
-                print(f"[Moderate] 타임아웃을 자동으로 연장했습니다. (서버: {member.guild.name}, 대상: {member.name}, 남은 기간: {remaining_duration})")
-            except discord.Forbidden:
-                print(f"[Moderate] 타임아웃 자동으로 연장하는 데 실패했습니다. (권한 부족, 서버: {member.guild.name}, 대상: {member.name})")
-                break
-            except Exception as e:
-                print(f"[Moderate] 타임아웃을 자동으로 연장하는 도중 오류가 발생했습니다 ({e})")
-                break
-        
-        # 모든 연장 완료 시 데이터 삭제
-        if remaining_duration.total_seconds() <= 0:
+                # 다음 연장 기간 계산 (최대 28일)
+                Next_Apply = min(remaining_duration, datetime.timedelta(days=28))
+                
+                try:
+                    await member.timeout(Next_Apply, reason=f"[자동 연장] {reason}")
+                    remaining_duration -= Next_Apply
+                    applied_duration = Next_Apply
+                    print(f"[Moderate] 타임아웃을 자동으로 연장했습니다. (서버: {member.guild.name}, 대상: {member.name}, 남은 기간: {remaining_duration})")
+                except discord.Forbidden:
+                    print(f"[Moderate] 타임아웃 자동 연장에 실패했습니다. (권한 부족, 서버: {member.guild.name}, 대상: {member.name})")
+                    break
+        except asyncio.CancelledError:
+            print(f"[Moderate] 타임아웃 자동 연장 작업이 취소되었습니다. (대상: {member.name})")
+        except Exception as e:
+            print(f"[Moderate] 타임아웃 자동 연장 중 오류 발생: {e}")
+        finally:
+            # 작업 종료 시 데이터베이스 및 태스크 관리 정리
             Timeouts = self.Load_Timeouts()
-            Key = f"{member.guild.id}_{member.id}"
-            if Key in Timeouts:
-                del Timeouts[Key]
+            if Task_Key in Timeouts and remaining_duration.total_seconds() <= 0:
+                del Timeouts[Task_Key]
                 self.Save_Timeouts(Timeouts)
+            
+            if Task_Key in self.Timeout_Tasks:
+                del self.Timeout_Tasks[Task_Key]
 
     # /관리 타임아웃 부여 [@사용자] [기간] [사유]
     @Timeout_CMDGroup.command(name="부여", description="사용자를 타임아웃합니다. 타임아웃 멤버 권한을 요구합니다.")
@@ -287,40 +295,45 @@ class Moderate(commands.Cog):
             return await ctx.respond(embed=Error_Dialog_Embed("애플리케이션을 타임아웃할 수 없습니다."), ephemeral=True)
 
         # 타임아웃 기간 파싱
-        Parsed_Duration = Parse_Duration(duration)
-        if not Parsed_Duration:
+        Duration_Delta = Parse_Duration(duration)
+        if not Duration_Delta:
             return await ctx.respond(embed=Error_Dialog_Embed("올바른 기간 형식을 입력해주세요. (ex: 10초, 3분, 1시간, 1일, 1주, 1개월, 1년)"), ephemeral=True)
 
-        Timeout_Until = discord.utils.utcnow() + Parsed_Duration
-        Timeout_Until_Parsed = Timeout_Until.strftime('%Y년 %m월 %d일 %H:%M:%S')
+        # 타임아웃 종료 시점 계산 (datetime 객체)
+        Final_End_Time = discord.utils.utcnow() + Duration_Delta
+        Task_Key = f"{ctx.guild.id}_{member.id}"
 
         # 타임아웃 실행
         try:
-            Max_Limit = datetime.timedelta(days=28)
-            Initial_Duration = min(Parsed_Duration, Max_Limit)
+            Max_API_Limit = datetime.timedelta(days=28)
+            Initial_Apply_Duration = min(Duration_Delta, Max_API_Limit)
 
-            await member.timeout(Initial_Duration, reason=reason)
+            # 기존 연장 태스크가 있다면 취소
+            if Task_Key in self.Timeout_Tasks:
+                self.Timeout_Tasks[Task_Key].cancel()
+
+            await member.timeout_for(Initial_Apply_Duration, reason=reason)
 
             # 기간이 28일 이상이면 데이터 저장 및 자동 연장 태스크 시작
-            if Parsed_Duration > Max_Limit:
+            if Duration_Delta > Max_API_Limit:
                 Timeouts = self.Load_Timeouts()
-                Key = f"{ctx.guild.id}_{member.id}"
-                Timeouts[Key] = {
+                Timeouts[Task_Key] = {
                     "Guild_ID": ctx.guild.id,
                     "Member_ID": member.id,
-                    "Target_End": Timeout_Until.isoformat(),
+                    "Target_End": Final_End_Time.isoformat(),
                     "Reason": reason
                 }
                 self.Save_Timeouts(Timeouts)
                 
-                Remaining = Parsed_Duration - Max_Limit
-                self.bot.loop.create_task(self.Auto_Extend_Timeout(member, Initial_Duration, Remaining, reason))
+                Remaining_Duration = Duration_Delta - Max_API_Limit
+                Task = self.bot.loop.create_task(self.Auto_Extend_Timeout(member, Initial_Apply_Duration, Remaining_Duration, reason))
+                self.Timeout_Tasks[Task_Key] = Task
 
             embed = discord.Embed(title=f"⚠️ {member.display_name}님을 타임아웃했습니다.", color=discord.Color.yellow())
             embed.add_field(name="사유", value=reason, inline=True)
             embed.add_field(name="요청자", value=ctx.author.display_name, inline=True)
-            embed.add_field(name="기간", value=Timeout_Until_Parsed, inline=True)
-            embed.set_thumbnail(url=member.avatar.url)
+            embed.add_field(name="기간", value=f"{Final_End_Time.strftime('%Y년 %m월 %d일 %H:%M:%S')}까지", inline=True)
+            embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"일시: {Current_Time()}")
             await ctx.respond(embed=embed)
             print(f"[Moderate] 사용자를 타임아웃했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {member.name}, 기간: {duration})")
@@ -347,17 +360,20 @@ class Moderate(commands.Cog):
         try:
             await member.timeout(None, reason=reason)
             
-            # 자동 연장 데이터가 있다면 삭제 (수동 해제 시 백그라운드 태스크 종료)
+            # 자동 연장 데이터 및 태스크 삭제
+            Task_Key = f"{ctx.guild.id}_{member.id}"
+            if Task_Key in self.Timeout_Tasks:
+                self.Timeout_Tasks[Task_Key].cancel()
+
             Timeouts = self.Load_Timeouts()
-            Key = f"{ctx.guild.id}_{member.id}"
-            if Key in Timeouts:
-                del Timeouts[Key]
+            if Task_Key in Timeouts:
+                del Timeouts[Task_Key]
                 self.Save_Timeouts(Timeouts)
 
             embed = discord.Embed(title=f"✅ {member.display_name}님의 타임아웃을 해제했습니다.", color=discord.Color.green())
             embed.add_field(name="사유", value=reason, inline=True)
             embed.add_field(name="요청자", value=ctx.author.display_name, inline=True)
-            embed.set_thumbnail(url=member.avatar.url)
+            embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"일시: {Current_Time()}")
             await ctx.respond(embed=embed)
             print(f"[Moderate] 사용자의 타임아웃을 해제했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {member.name})")
