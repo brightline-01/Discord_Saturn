@@ -1,4 +1,4 @@
-import discord
+import discord, os, shutil, atexit
 from discord.ext import commands, tasks
 from Config import APP_NAME, APP_VER
 
@@ -9,6 +9,18 @@ class Launcher(commands.Cog):
         self.Status_Messages = [lambda: f"{len(self.bot.guilds)}개의 서버에서 사용 중",
                                 lambda: "간단한 다기능 애플리케이션",]
         self.Current_Message_Index = 0
+        
+        # 애플리케이션 종료 시 캐시 삭제 예약
+        atexit.register(self.Cleanup_Cache)
+
+    # 캐시 삭제 스크립트
+    def Cleanup_Cache(self):
+        for root, dirs, files in os.walk('.'):
+            if '__pycache__' in dirs:
+                try:
+                    shutil.rmtree(os.path.join(root, '__pycache__'))
+                except:
+                    pass
 
     @commands.Cog.listener()
     async def on_ready(self):
