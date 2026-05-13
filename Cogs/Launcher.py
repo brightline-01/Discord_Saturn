@@ -1,6 +1,6 @@
 import discord, os, shutil, atexit
 from discord.ext import commands, tasks
-from Config import APP_NAME, APP_VER
+from Config import APP_NAME, APP_VER, DEBUG_GUILD
 
 # 애플리케이션과 연결 및 Presence 변경을 담당하는 Cog
 class Launcher(commands.Cog):
@@ -25,21 +25,21 @@ class Launcher(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         # 런처 실행 로그 출력
-        print('-----------------------------------')
         print('[Launcher] 애플리케이션과 연결했습니다.')
+        print('-----------------------------------')
         print(f'애플리케이션 이름: {APP_NAME}')
         print(f'애플리케이션 ID: {self.bot.user.id}')
         print(f'애플리케이션 버전: {APP_VER}')
         print('-----------------------------------')
 
         # 슬래쉬 커맨드 동기화 스크립트
-        await self.bot.sync_commands(guild_ids=[1463547097285398529])
+        await self.bot.sync_commands(guild_ids=[DEBUG_GUILD])
         print('[Launcher] 슬래쉬 커맨드를 동기화했습니다.')
 
         # Presence 변경 작업이 실행 중이지 않으면 시작
         if not self.Change_Presence.is_running():
             self.Change_Presence.start()
-            print("[Launcher] Presence 변경 작업을 시작했습니다.")
+            print("[Launcher] 상태 메세지 변경 작업을 시작했습니다.")
 
     @tasks.loop(seconds=5)
     async def Change_Presence(self):

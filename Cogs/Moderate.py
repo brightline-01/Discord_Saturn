@@ -64,10 +64,201 @@ class Moderate(commands.Cog):
         self.Warning_Data_Path = "Datas/Warning_Data.json"
         self.Settings_Data_Path = "Datas/Settings_Data.json"
         self.Timeout_Tasks = {}
+        self.Message_Cache = {}
+        self.Channel_Cache = {}
         
         # 애플리케이션이 실행되면 저장된 타임아웃 정보를 복원
         self.bot.loop.create_task(self.Restore_Timeouts())
 
+
+    # 도배 감지 엔진
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot or not message.guild:
+            return
+        
+        # 권한 확인 (관리자는 제외)
+        if message.author.guild_permissions.administrator or message.author.guild_permissions.manage_messages:
+            return
+
+        # 설정 불러오기
+        Settings = Load_Data(self.Settings_Data_Path)
+        Guild_ID = str(message.guild.id)
+        
+        if Guild_ID not in Settings or "Anti_Spam" not in Settings[Guild_ID]:
+            return
+        
+        Config = Settings[Guild_ID]["Anti_Spam"]
+        if not Config.get("Enabled"):
+            return
+        
+        Threshold_Count = Config["Count"]
+        Threshold_Seconds = Config["Seconds"]
+        Mode = Config.get("Mode", "모든 메시지")
+        
+        # 메시지 기록 업데이트
+        Now = datetime.datetime.now().timestamp()
+        User_Key = (message.guild.id, message.author.id)
+        
+        if User_Key not in self.Message_Cache:
+            self.Message_Cache[User_Key] = []
+        
+        self.Message_Cache[User_Key].append((Now, message.content))
+        
+        # 시간 범위 밖의 메시지 기록 삭제
+        self.Message_Cache[User_Key] = [item for item in self.Message_Cache[User_Key] if Now - item[0] <= Threshold_Seconds]
+        
+        # 도배 감지 조건 계산
+        if Mode == "동일한 메시지":
+            # 현재 메시지와 동일한 내용의 메시지만 카운트
+            Relevant_Messages = [item for item in self.Message_Cache[User_Key] if item[1] == message.content]
+            Spam_Count = len(Relevant_Messages)
+            Is_Spam = Spam_Count >= Threshold_Count
+            Reason_Text = f"동일한 내용 도배 ({Threshold_Seconds}초 내 {Spam_Count}회)"
+        else:
+            # 모든 메시지 카운트
+            Spam_Count = len(self.Message_Cache[User_Key])
+            Is_Spam = Spam_Count >= Threshold_Count
+            Reason_Text = f"메시지 과다 전송 ({Threshold_Seconds}초 내 {Spam_Count}회)"
+
+        # 도배 감지 시 처벌 부여
+        if Is_Spam:
+            # 기록 초기화 (중복 처벌 방지)
+            del self.Message_Cache[User_Key]
+            
+            Action = Config["Action"]
+            Duration_Str = Config.get("Duration")
+            Punish_Reason = f"[자동 처벌] {Reason_Text}"
+            
+            try:
+                if Action == "차단":
+                    await message.author.ban(reason=Punish_Reason, delete_message_days=1)
+                    Punish_Msg = f"도배 감지에 의해 **차단**했습니다."
+                elif Action == "추방":
+                    await message.author.kick(reason=Punish_Reason)
+                    Punish_Msg = f"도배 감지에 의해 **추방**했습니다."
+                elif Action == "타임아웃":
+                    Duration_Delta = Parse_Duration(Duration_Str)
+                    if Duration_Delta:
+                        await message.author.timeout_for(Duration_Delta, reason=Punish_Reason)
+                        Punish_Msg = f"도배 감지에 의해 **{Duration_Str}간 타임아웃**했습니다."
+                    else:
+                        return
+                
+                # 로그 출력
+                await message.channel.send(embed=Success_Dialog_Embed(f"{message.author.display_name}님을 {Punish_Msg}"))
+                Print_Log("Moderate", f"자동 처벌 ({Action})을 실행했습니다.", message.guild.name, "애플리케이션 (도배 감지)", message.author.name, extra=f"감지 사유: {Reason_Text}")
+                
+            except Exception as e:
+                Print_Log("Moderate", "자동 처벌 중 오류가 발생했습니다.", message.guild.name, "애플리케이션 (도배 감지)", message.author.name, extra=f"오류: {e}")
+
+    # 권한 부여 감지
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        if not after.guild:
+            return
+        
+        # 역할 부여 감지
+        if len(before.roles) < len(after.roles):
+            # 부여한 역할들 중 관리자 권한이 있는지 확인
+            New_Roles = [role for role in after.roles if role not in before.roles]
+            Admin_Roles = [role for role in New_Roles if role.permissions.administrator]
+            
+            if Admin_Roles:
+                # 설정 불러오기
+                Settings = Load_Data(self.Settings_Data_Path)
+                Guild_ID = str(after.guild.id)
+                
+                if Guild_ID in Settings and Settings[Guild_ID].get("Anti_Admin", {}).get("Enabled"):
+                    # 감사 로그 확인
+                    try:
+                        async for entry in after.guild.audit_logs(limit=5, action=discord.AuditLogAction.member_role_update):
+                            if entry.target.id == after.id:
+                                Issuer = entry.user
+                                
+                                # 서버 소유자가 부여한 경우는 허용
+                                if Issuer.id == after.guild.owner_id:
+                                    return
+                                
+                                # 애플리케이션 자신이나 서버 소유자는 처리 대상에서 제외
+                                if Issuer.id == self.bot.user.id:
+                                    return
+
+                                # 보안 조치: 역할 부여자와 대상자 모두 차단
+                                Reason = f"[권한 부여 감지] 승인되지 않은 관리자 권한 부여 감지 (부여자: {Issuer.name})"
+                                
+                                # 대상자 차단
+                                if not after.id == after.guild.owner_id:
+                                    await after.ban(reason=Reason)
+                                
+                                # 부여자 차단
+                                if not Issuer.id == after.guild.owner_id:
+                                    await Issuer.ban(reason=Reason)
+                                
+                                Print_Log("Moderate", "사용자를 차단했습니다.", after.guild.name, "애플리케이션 (권한 부여 감지)", after.name, extra=f"부여자: {Issuer.name}")
+                                break
+                    except Exception as e:
+                        Print_Log("Moderate", "사용자를 차단하는 중 오류가 발생했습니다.", after.guild.name, "애플리케이션 (권한 부여 감지)", after.name, extra=f"오류: {e}")
+
+    # 레이드 감지 엔진
+    async def Check_Channel_Raid(self, guild, action_type):
+        # 설정 확인
+        try:
+            Settings = Load_Data(self.Settings_Data_Path)
+            Guild_ID = str(guild.id)
+            
+            if Guild_ID not in Settings or "Anti_Channel" not in Settings[Guild_ID]:
+                return
+            
+            Config = Settings[Guild_ID]["Anti_Channel"]
+            if not Config.get("Enabled"):
+                return
+            
+            Threshold_Count = Config["Count"]
+            Threshold_Seconds = Config["Seconds"]
+            
+            # 감사 로그 확인 (최근 채널 작업 수행자 찾기)
+            Audit_Action = discord.AuditLogAction.channel_create if action_type == "create" else discord.AuditLogAction.channel_delete
+            
+            async for entry in guild.audit_logs(limit=3, action=Audit_Action):
+                # 애플리케이션 자신이나 소유자는 제외
+                if entry.user.id == self.bot.user.id or entry.user.id == guild.owner_id:
+                    continue
+                
+                Issuer = entry.user
+                Now = datetime.datetime.now().timestamp()
+                User_Key = (guild.id, Issuer.id)
+                
+                if User_Key not in self.Channel_Cache:
+                    self.Channel_Cache[User_Key] = []
+                
+                self.Channel_Cache[User_Key].append(Now)
+                
+                # 시간 범위 밖의 기록 삭제
+                self.Channel_Cache[User_Key] = [ts for ts in self.Channel_Cache[User_Key] if Now - ts <= Threshold_Seconds]
+                
+                # 레이드 감지
+                if len(self.Channel_Cache[User_Key]) >= Threshold_Count:
+                    # 기록 초기화
+                    del self.Channel_Cache[User_Key]
+                    
+                    Reason = f"[레이드 감지] 지정한 시간 내 다발적 채널 {'생성' if action_type == 'create' else '삭제'} 감지 ({Threshold_Seconds}초 내 {Threshold_Count}회 이상)"
+                    
+                    # 시도자 차단
+                    await Issuer.ban(reason=Reason)
+                    
+                    Print_Log("Moderate", "사용자를 차단했습니다.", guild.name, "애플리케이션 (레이드 감지)", Issuer.name, extra=f"작업: 채널 {action_type}")
+                    break
+        except Exception as e:
+            Print_Log("Moderate", "사용자를 차단하는 중 오류가 발생했습니다.", guild.name, "애플리케이션 (레이드 감지)", extra=f"오류: {e}")
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel):
+        await self.Check_Channel_Raid(channel.guild, "create")
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        await self.Check_Channel_Raid(channel.guild, "delete")
 
     # 애플리케이션 재시작 시 타임아웃 정보 불러오기 스크립트
     async def Restore_Timeouts(self):
@@ -726,7 +917,7 @@ class Moderate(commands.Cog):
             Count = Warnings[User_Key]["Count"]
             Reasons = Warnings[User_Key]["Reasons"]
             
-            # 페이징 뷰 생성
+            # 페이지 뷰 생성
             View = Warning_Page_View(Target_Member, Reasons)
             Embed = View.Create_Embed()
             Embed.insert_field_at(0, name="누적 경고", value=f"{Count}회", inline=False)

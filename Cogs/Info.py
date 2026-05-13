@@ -31,7 +31,7 @@ class Info(commands.Cog):
         embed.set_footer(text=f"일시: {Current_Time()}")
         embed.set_thumbnail(url=member.display_avatar.url)
         await ctx.respond(embed=embed)
-        print(f"[Info] 사용자 정보를 표시했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 대상: {member.name})")
+        Print_Log("Info", "사용자 정보를 표시했습니다.", ctx.guild.name, ctx.author.name, member.name)
 
     # /정보 서버
     @Info_CMDGroup.command(name="서버", description="현재 서버의 정보를 표시합니다.")
@@ -62,7 +62,7 @@ class Info(commands.Cog):
         embed.set_footer(text=f"일시: {Current_Time()}")
         embed.set_thumbnail(url=ctx.guild.icon.url)
         await ctx.respond(embed=embed)
-        print(f"[Info] 서버 정보를 표시했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name})")
+        Print_Log("Info", "서버 정보를 표시했습니다.", ctx.guild.name, ctx.author.name)
 
     # /정보 앱
     @Info_CMDGroup.command(name="앱", description="애플리케이션의 정보를 표시합니다.")
@@ -87,7 +87,7 @@ class Info(commands.Cog):
         embed.add_field(name="서버 OS", value=platform.platform(), inline=True)
         embed.set_footer(text=f"일시: {Current_Time()}")
         await ctx.respond(embed=embed)
-        print(f"[Info] 애플리케이션 정보를 표시했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name})")
+        Print_Log("Info", "애플리케이션 정보를 표시했습니다.", ctx.guild.name, ctx.author.name)
 
 def setup(bot):
     bot.add_cog(Info(bot))
