@@ -1,7 +1,9 @@
 import discord, os
 from Token import APP_TOKEN
 
-bot = discord.Bot()
+Intents = discord.Intents.all()
+
+bot = discord.Bot(intents=Intents)
 
 # Cogs 불러오기
 for filename in os.listdir('./Cogs'):

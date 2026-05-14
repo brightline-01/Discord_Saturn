@@ -2,7 +2,6 @@ import discord, os, shutil, atexit
 from discord.ext import commands, tasks
 from Config import APP_NAME, APP_VER, DEBUG_GUILD
 
-# 애플리케이션과 연결 및 Presence 변경을 담당하는 Cog
 class Launcher(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -17,10 +16,7 @@ class Launcher(commands.Cog):
     def Cleanup_Cache(self):
         for root, dirs, files in os.walk('.'):
             if '__pycache__' in dirs:
-                try:
-                    shutil.rmtree(os.path.join(root, '__pycache__'))
-                except:
-                    pass
+                shutil.rmtree(os.path.join(root, '__pycache__'), ignore_errors=True)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -39,19 +35,14 @@ class Launcher(commands.Cog):
         # Presence 변경 작업이 실행 중이지 않으면 시작
         if not self.Change_Presence.is_running():
             self.Change_Presence.start()
-            print("[Launcher] 상태 메세지 변경 작업을 시작했습니다.")
+            print("[Launcher] Presence 변경 작업을 시작했습니다.")
 
     @tasks.loop(seconds=5)
     async def Change_Presence(self):
-        # 현재 인덱스의 메세지로 Presence 설정
-        Status_Message = self.Status_Messages[self.Current_Message_Index]()
-        Activity = discord.Activity(
-            type=discord.ActivityType.playing,
-            name=Status_Message
-        )
-        await self.bot.change_presence(activity=Activity)
+        # Presence 변경
+        await self.bot.change_presence(activity=discord.Game(name=self.Status_Messages[self.Current_Message_Index]()))
 
-        # 다음 메세지로 인덱스 순환 (리스트 길이를 초과하면 0으로 초기화)
+        # 다음 메세지로 인덱스 순환
         self.Current_Message_Index = (self.Current_Message_Index + 1) % len(self.Status_Messages)
 
     @Change_Presence.before_loop
