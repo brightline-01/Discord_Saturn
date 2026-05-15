@@ -112,7 +112,7 @@ class Settings(commands.Cog):
             Settings = Load_Data(self.Settings_Data_Path)
             Guild_Settings = Settings.setdefault(str(ctx.guild.id), {})
             
-            if not enabled:
+            if not Enabled:
                 Guild_Settings.pop("Auto_Punish", None)
                 Message = "자동 처벌 설정을 비활성화했습니다."
             else:
@@ -140,7 +140,7 @@ class Settings(commands.Cog):
 
             Save_Data(self.Settings_Data_Path, Settings)
             await ctx.respond(embed=Success_Dialog_Embed(Message), ephemeral=True)
-            Print_Log("Settings", Log_Name, ctx.guild.name, ctx.author.name, Extra=f"설정: {'활성화' if enabled else '비활성화'}")
+            Print_Log("Settings", Log_Name, ctx.guild.name, ctx.author.name, Extra=f"설정: {'활성화' if Enabled else '비활성화'}")
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
 
@@ -151,7 +151,7 @@ class Settings(commands.Cog):
         Count: discord.Option(int, name="개수", description="감지할 메시지 개수를 지정하세요. (2 ~)", min_value=2),
         Seconds: discord.Option(int, name="시간", description="메시지를 감지할 시간을 지정하세요. (초, 1 ~ 60)", min_value=1, max_value=60),
         Action: discord.Option(str, name="처벌", description="실행할 처벌의 종류를 지정하세요.", choices=["차단", "추방", "타임아웃"]),
-        Mode: discord.Option(str, name="모드", description="감지할 메시지의 종류를 지정하세요.", choices=["모든 메시지", "동일한 메시지"]),
+        Mode: discord.Option(str, name="모드", description="감지할 메시지의 종류를 지정하세요.", choices=["모든 메세지", "동일한 메세지"]),
         Duration: discord.Option(str, name="기간", description="타임아웃을 부여할 기간을 지정하세요. (선택)", required=False, default="1시간")):
         # 권한 확인
         if not ctx.author.guild_permissions.administrator:
@@ -169,7 +169,7 @@ class Settings(commands.Cog):
                 "Enabled": True, "Count": Count, "Seconds": Seconds,
                 "Action": Action, "Mode": Mode, "Duration": Duration if Action == "타임아웃" else None
             }
-            Message = f"**{Seconds}초** 이내에 **{'모든' if Mode == '모든 메시지' else '동일한 내용의'}** 메시지를 **{Count}개** 이상 보낼 경우 자동으로 **{Action}**하도록 설정했습니다."
+            Message = f"**{Seconds}초** 이내에 **{'모든' if Mode == '모든 메세지' else '동일한 내용의'}** 메시지를 **{Count}개** 이상 보낼 경우 자동으로 **{Action}**하도록 설정했습니다."
 
         await Update_Security_Settings(ctx, "Anti_Spam", Data, Message, "도배 감지 설정을 변경했습니다.")
 
@@ -208,23 +208,21 @@ class Settings(commands.Cog):
     # /설정 티켓 설정 [생성] [보관] [역할] [로그]
     @Ticket_Settings_CMDGroup.command(name="설정", description="이 서버의 티켓 시스템을 설정합니다. 관리자 권한을 요구합니다.")
     @discord.default_permissions(administrator=True)
-    async def Setup_Ticket_System(self, ctx,
-        category: discord.Option(discord.CategoryChannel, name="생성", description="티켓이 생성될 카테고리를 선택하세요.", required=True),
-        archive: discord.Option(discord.CategoryChannel, name="보관", description="티켓이 보관될 카테고리를 선택하세요.", required=True),
-        role: discord.Option(discord.Role, name="역할", description="티켓에 접근할 수 있는 관리자 역할을 선택하세요.", required=True),
-        log: discord.Option(discord.TextChannel, name="로그", description="티켓 대화 내역(txt)이 저장될 채널을 선택하세요. (선택)", required=False)):
+    async def Setup_Ticket_System(self, ctx, Category: discord.Option(discord.CategoryChannel, name="생성", description="티켓이 생성될 카테고리를 선택하세요.", required=True),
+        Archive: discord.Option(discord.CategoryChannel, name="보관", description="티켓이 보관될 카테고리를 선택하세요.", required=True),
+        Role: discord.Option(discord.Role, name="역할", description="티켓에 접근할 수 있는 관리자 역할을 선택하세요.", required=True),
+        Log: discord.Option(discord.TextChannel, name="로그", description="티켓 대화 내역(txt)이 저장될 채널을 선택하세요. (선택)", required=False)):
         
         try:
             Settings = Load_Data(self.Settings_Data_Path)
-            Guild_ID = str(ctx.guild.id)
+            Ticket_Settings = Settings.setdefault(str(ctx.guild.id), {}).setdefault("Ticket", {})
             
-            if Guild_ID not in Settings: Settings[Guild_ID] = {}
-            if "Ticket" not in Settings[Guild_ID]: Settings[Guild_ID]["Ticket"] = {}
-            
-            if category: Settings[Guild_ID]["Ticket"]["Category_ID"] = category.id
-            if archive: Settings[Guild_ID]["Ticket"]["Archive_Category_ID"] = archive.id
-            if role: Settings[Guild_ID]["Ticket"]["Staff_Role_ID"] = role.id
-            if log: Settings[Guild_ID]["Ticket"]["Log_Channel_ID"] = log.id
+            Ticket_Settings.update({
+                "Category_ID": Category.id,
+                "Archive_Category_ID": Archive.id,
+                "Staff_Role_ID": Role.id,
+                "Log_Channel_ID": Log.id if Log else None
+            })
             
             Save_Data(self.Settings_Data_Path, Settings)
             
@@ -236,7 +234,6 @@ class Settings(commands.Cog):
             
             await ctx.respond(embed=embed, ephemeral=True)
             Print_Log("Settings", "티켓 시스템을 설정했습니다.", ctx.guild.name, ctx.author.name)
-            
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
 
@@ -244,35 +241,39 @@ class Settings(commands.Cog):
     @Ticket_Settings_CMDGroup.command(name="초기화", description="이 서버의 티켓 시스템 설정을 초기화합니다. 서버 소유자 권한을 요구합니다.")
     @discord.default_permissions(administrator=True)
     async def Reset_Ticket_System(self, ctx):
+        # 권한 확인
         if ctx.author.id != ctx.guild.owner_id:
             return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
 
-        Confirm_Embed = discord.Embed(
+        View = Reset_Confirm_View(ctx.author)
+
+        Response = await ctx.respond(embed=discord.Embed(
             title="⚠️ 티켓 시스템 초기화",
             description="정말로 이 서버의 티켓 시스템 설정을 초기화하시겠습니까? **이 작업은 되돌릴 수 없습니다.**",
             color=discord.Color.red()
-        )
-        View = Reset_Confirm_View(ctx.author)
-        Response = await ctx.respond(embed=Confirm_Embed, view=View, ephemeral=True)
+        ), view=View, ephemeral=True)
         await View.wait()
         
         if View.Value is None:
-            await Response.edit(embed=Error_Dialog_Embed("시간이 초과되었습니다."), view=None)
-        elif View.Value:
-            try:
-                Settings = Load_Data(self.Settings_Data_Path)
-                Guild_ID = str(ctx.guild.id)
-                if Guild_ID in Settings and "Ticket" in Settings[Guild_ID]:
-                    del Settings[Guild_ID]["Ticket"]
-                    Save_Data(self.Settings_Data_Path, Settings)
-                    await Response.edit(embed=Success_Dialog_Embed("이 서버의 티켓 시스템 설정을 초기화했습니다."), view=None)
-                    Print_Log("Settings", "티켓 시스템 설정을 초기화했습니다.", ctx.guild.name, ctx.author.name)
-                else:
-                    await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 티켓 시스템 설정이 없습니다."), view=None)
-            except Exception as e:
-                await Response.edit(embed=Error_Dialog_Embed(f"티켓 시스템 설정을 초기화하는 중 오류가 발생했습니다. ({e})"), view=None)
-        else:
-            await Response.edit(embed=Success_Dialog_Embed("티켓 시스템 설정 초기화를 취소했습니다."), view=None)
+            return await Response.edit(embed=Error_Dialog_Embed("시간이 초과되었습니다."), view=None)
+
+        if not View.Value:
+            return await Response.edit(embed=Success_Dialog_Embed("티켓 시스템 설정 초기화를 취소했습니다."), view=None)
+
+        try:
+            Settings = Load_Data(self.Settings_Data_Path)
+            Guild_Settings = Settings.get(str(ctx.guild.id), {})
+            
+            if "Ticket" not in Guild_Settings:
+                return await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 티켓 시스템 설정이 없습니다."), view=None)
+
+            del Guild_Settings["Ticket"]
+            Save_Data(self.Settings_Data_Path, Settings)
+            
+            await Response.edit(embed=Success_Dialog_Embed("이 서버의 티켓 시스템 설정을 초기화했습니다."), view=None)
+            Print_Log("Settings", "티켓 시스템 설정을 초기화했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await Response.edit(embed=Error_Dialog_Embed(f"티켓 시스템 설정을 초기화하는 중 오류가 발생했습니다. ({e})"), view=None)
 
     # 인증 시스템 설정 명령어 그룹
     Verify_Settings_CMDGroup = Settings_CMDGroup.create_subgroup("인증")
@@ -280,23 +281,17 @@ class Settings(commands.Cog):
     # /설정 인증 설정 [역할] [설명]
     @Verify_Settings_CMDGroup.command(name="설정", description="인증 메세지를 생성하고 현재 채널에 전송합니다. 관리자 권한을 요구합니다.")
     @discord.default_permissions(administrator=True)
-    async def Setup_Verify_System(self, ctx,
-        role: discord.Option(discord.Role, name="역할", description="인증 시 부여할 역할을 지정하세요.", required=True),
-        description: discord.Option(str, name="설명", description="인증 메세지의 내용을 지정하세요. (선택)", required=False)):
+    async def Setup_Verify_System(self, ctx, Role: discord.Option(discord.Role, name="역할", description="인증 시 부여할 역할을 지정하세요.", required=True),
+        Description: discord.Option(str, name="설명", description="인증 메세지의 내용을 지정하세요. (선택)", required=False)):
         
         try:
-            Settings_Data = Load_Data(self.Settings_Data_Path)
-            Guild_ID = str(ctx.guild.id)
+            Settings = Load_Data(self.Settings_Data_Path)
+            Settings.setdefault(str(ctx.guild.id), {})["Verify"] = {"Role_ID": Role.id}
+            Save_Data(self.Settings_Data_Path, Settings)
             
-            if Guild_ID not in Settings_Data: Settings_Data[Guild_ID] = {}
-            Settings_Data[Guild_ID]["Verify"] = {"Role_ID": role.id}
-            
-            Save_Data(self.Settings_Data_Path, Settings_Data)
-            
-            Default_Desc = f"✅ 인증하기 버튼을 클릭하여 인증하세요."
             embed = discord.Embed(
                 title="✅ 멤버 인증",
-                description=description if description else Default_Desc,
+                description=Description or "✅ 인증하기 버튼을 클릭하여 인증하세요.",
                 color=discord.Color.green()
             )
             embed.set_footer(text="인증을 완료하면 서버를 이용하실 수 있습니다.")
@@ -304,7 +299,6 @@ class Settings(commands.Cog):
             await ctx.respond(embed=Success_Dialog_Embed("인증 메세지를 생성했습니다."), ephemeral=True)
             await ctx.channel.send(embed=embed, view=Verify_View())
             Print_Log("Settings", "인증 메세지를 생성했습니다.", ctx.guild.name, ctx.author.name)
-            
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
 
@@ -312,35 +306,39 @@ class Settings(commands.Cog):
     @Verify_Settings_CMDGroup.command(name="초기화", description="이 서버의 인증 시스템 설정을 초기화합니다. 서버 소유자 권한을 요구합니다.")
     @discord.default_permissions(administrator=True)
     async def Reset_Verify_System(self, ctx):
+        # 권한 확인
         if ctx.author.id != ctx.guild.owner_id:
             return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
 
-        Confirm_Embed = discord.Embed(
+        View = Reset_Confirm_View(ctx.author)
+        
+        Response = await ctx.respond(embed=discord.Embed(
             title="⚠️ 인증 시스템 초기화",
             description="정말로 이 서버의 인증 시스템 설정을 초기화하시겠습니까? **이 작업은 되돌릴 수 없습니다.**",
             color=discord.Color.red()
-        )
-        View = Reset_Confirm_View(ctx.author)
-        Response = await ctx.respond(embed=Confirm_Embed, view=View, ephemeral=True)
+        ), view=View, ephemeral=True)
         await View.wait()
         
         if View.Value is None:
-            await Response.edit(embed=Error_Dialog_Embed("시간이 초과되었습니다."), view=None)
-        elif View.Value:
-            try:
-                Settings_Data = Load_Data(self.Settings_Data_Path)
-                Guild_ID = str(ctx.guild.id)
-                if Guild_ID in Settings_Data and "Verify" in Settings_Data[Guild_ID]:
-                    del Settings_Data[Guild_ID]["Verify"]
-                    Save_Data(self.Settings_Data_Path, Settings_Data)
-                    await Response.edit(embed=Success_Dialog_Embed("이 서버의 인증 시스템 설정을 초기화했습니다."), view=None)
-                    Print_Log("Settings", "인증 시스템 설정을 초기화했습니다.", ctx.guild.name, ctx.author.name)
-                else:
-                    await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 인증 시스템 설정이 없습니다."), view=None)
-            except Exception as e:
-                await Response.edit(embed=Error_Dialog_Embed(f"인증 시스템 설정을 초기화하는 중 오류가 발생했습니다. ({e})"), view=None)
-        else:
-            await Response.edit(embed=Success_Dialog_Embed("인증 시스템 설정 초기화를 취소했습니다."), view=None)
+            return await Response.edit(embed=Error_Dialog_Embed("시간이 초과되었습니다."), view=None)
+
+        if not View.Value:
+            return await Response.edit(embed=Success_Dialog_Embed("인증 시스템 설정 초기화를 취소했습니다."), view=None)
+
+        try:
+            Settings_Data = Load_Data(self.Settings_Data_Path)
+            Guild_Settings = Settings.get(str(ctx.guild.id), {})
+
+            if "Verify" not in Guild_Settings:
+                return await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 인증 시스템 설정이 없습니다."), view=None)
+
+            del Guild_Settings["Verify"]
+            Save_Data(self.Settings_Data_Path, Settings)
+
+            await Response.edit(embed=Success_Dialog_Embed("이 서버의 인증 시스템 설정을 초기화했습니다."), view=None)
+            Print_Log("Settings", "인증 시스템 설정을 초기화했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await Response.edit(embed=Error_Dialog_Embed(f"인증 시스템 설정을 초기화하는 중 오류가 발생했습니다. ({e})"), view=None)
 
     @commands.Cog.listener()
     async def on_ready(self):
