@@ -712,7 +712,7 @@ class Moderate(commands.Cog):
                 if not 1 <= Purge_Amount <= 1000:
                     return await ctx.followup.send(embed=Error_Dialog_Embed("1에서 1000 사이 정수를 입력하세요."), ephemeral=True)
 
-                Deleted = await Target_Channel.purge(limit=Amount)
+                Deleted = await Target_Channel.purge(limit=Purge_Amount)
                 Deleted_Text = f"{len(Deleted)}개"
                 
                 await ctx.followup.send(
@@ -809,7 +809,7 @@ class Moderate(commands.Cog):
             if Data["Count"] <= 0:
                 return await ctx.respond(embed=Error_Dialog_Embed(f"{Member.display_name}님의 경고가 없습니다."), ephemeral=True)
 
-            Remove_Amount = Data["Count"] if amount == "전체" else int(amount)
+            Remove_Amount = Data["Count"] if Amount == "전체" else int(Amount)
 
             if Remove_Amount <= 0:
                 return await ctx.respond(embed=Error_Dialog_Embed("1 이상 100 이하의 정수를 입력하세요."), ephemeral=True)
@@ -821,14 +821,14 @@ class Moderate(commands.Cog):
             if Data["Count"] == 0:
                 Data["Reasons"] = []
             else:
-                Data["Reasons"].append({"Reason": f"[경고 제거] {reason}", "Issuer": ctx.author.display_name, "Time": Current_Time()})
+                Data["Reasons"].append({"Reason": f"[경고 제거] {Reason}", "Issuer": ctx.author.display_name, "Time": Current_Time()})
 
             Save_Data(self.Warning_Data_Path, Warnings)
 
             embed = discord.Embed(title=f"✅ {Member.display_name}님의 경고를 제거했습니다.", color=discord.Color.green())
-            embed.add_field(name="제거한 경고", value="전체 삭제" if amount == "전체" else f"{Remove_Amount}회", inline=True)
+            embed.add_field(name="제거한 경고", value="전체 삭제" if Amount == "전체" else f"{Remove_Amount}회", inline=True)
             embed.add_field(name="현재 경고", value=f"{Data['Count']}회", inline=True)
-            embed.add_field(name="사유", value=reason, inline=True)
+            embed.add_field(name="사유", value=Reason, inline=True)
             embed.add_field(name="요청자", value=ctx.author.display_name, inline=True)
             embed.set_thumbnail(url=Member.display_avatar.url)
             embed.set_footer(text=f"일시: {Current_Time()}")

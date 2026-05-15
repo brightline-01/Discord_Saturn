@@ -1,0 +1,22 @@
+[2026-05-16 02:41:51] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 02:41:55] [Launcher] 애플리케이션과 연결했습니다.
+[2026-05-16 02:41:55] -----------------------------------
+[2026-05-16 02:41:55] 애플리케이션 이름: Saturn (Preview Channel)
+[2026-05-16 02:41:55] 애플리케이션 ID: 1438130478497398815
+[2026-05-16 02:41:55] 애플리케이션 버전: v2.0_preview
+[2026-05-16 02:41:55] -----------------------------------
+[2026-05-16 02:41:56] [Launcher] 슬래쉬 커맨드를 동기화했습니다.
+[2026-05-16 02:41:56] [Launcher] Presence 변경 작업을 시작했습니다.
+[2026-05-16 02:42:03] [Music] 재생 명령어를 사용했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 02:42:32] Unclosed connection
+client_connection: Connection<ConnectionKey(host='south-korea13097.discord.media', port=443, is_ssl=True, ssl=True, proxy=None, proxy_auth=None, proxy_headers_hash=None)>
+[2026-05-16 02:42:32] Unclosed connection
+client_connection: Connection<ConnectionKey(host='south-korea13097.discord.media', port=443, is_ssl=True, ssl=True, proxy=None, proxy_auth=None, proxy_headers_hash=None)>
+[2026-05-16 02:42:32] Unclosed connection
+client_connection: Connection<ConnectionKey(host='south-korea13097.discord.media', port=443, is_ssl=True, ssl=True, proxy=None, proxy_auth=None, proxy_headers_hash=None)>
+[2026-05-16 02:42:32] Unclosed connection
+client_connection: Connection<ConnectionKey(host='south-korea13097.discord.media', port=443, is_ssl=True, ssl=True, proxy=None, proxy_auth=None, proxy_headers_hash=None)>
+[2026-05-16 02:42:32] Unclosed connection
+client_connection: Connection<ConnectionKey(host='south-korea13097.discord.media', port=443, is_ssl=True, ssl=True, proxy=None, proxy_auth=None, proxy_headers_hash=None)>
+[2026-05-16 02:42:33] [Music] 음악 재생 중 오류가 발생했습니다. (서버: SolarLabs Community, 요청자: 애플리케이션 (MusicPlayer), (Not connected to voice.))
+[2026-05-16 02:42:33] [Music] 음악을 재생했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)

@@ -1,0 +1,47 @@
+[2026-05-16 02:23:53] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 02:23:53] Traceback (most recent call last):
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 809, in _load_from_module_spec
+    spec.loader.exec_module(lib)  # type: ignore
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+[2026-05-16 02:23:53]   File "<frozen importlib._bootstrap_external>", line 1023, in exec_module
+[2026-05-16 02:23:53]   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+[2026-05-16 02:23:53]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 290, in <module>
+    class Music(commands.Cog):
+    ...<545 lines>...
+            await ctx.respond(embed=Success_Dialog_Embed("대기열을 셔플했습니다."))
+[2026-05-16 02:23:53]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 413, in Music
+    @Music.command(name="재생", description="YouTube에서 음악을 찾아 재생합니다.", options=[discord.Option(str, name="제목", description="재생할 음악의 제목 또는 URL", required=True)])
+     ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1401, in wrap
+    command = cls(func, parent=self, **kwargs)
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 764, in __init__
+    self._validate_parameters()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 780, in _validate_parameters
+    self.options = self._match_option_param_names(params, kwop)
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 920, in _match_option_param_names
+    options.extend(self._parse_options(left_out_params, check_params=False))
+                   ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 878, in _parse_options
+    _validate_names(option)
+    ~~~~~~~~~~~~~~~^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 171, in _validate_names
+    validate_chat_input_name(obj.name)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 2137, in validate_chat_input_name
+    raise error
+[2026-05-16 02:23:53] discord.errors.ValidationError: Command names and options must be lowercase. Received "URL"
+[2026-05-16 02:23:53] 
+The above exception was the direct cause of the following exception:
+
+[2026-05-16 02:23:53] Traceback (most recent call last):
+[2026-05-16 02:23:53]   File "d:\Github_Projects\Discord_Saturn\preview\App.py", line 11, in <module>
+    bot.load_extension(f'Cogs.{filename[:-3]}')
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 943, in load_extension
+    self._load_from_module_spec(spec, name)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+[2026-05-16 02:23:53]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 812, in _load_from_module_spec
+    raise errors.ExtensionFailed(key, e) from e
+[2026-05-16 02:23:53] discord.errors.ExtensionFailed: Extension 'Cogs.Music' raised an error: ValidationError: Command names and options must be lowercase. Received "URL"

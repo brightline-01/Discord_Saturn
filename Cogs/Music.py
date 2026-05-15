@@ -41,24 +41,25 @@ class MusicPlayer:
         return self.Voice and self.Voice.is_paused()
 
     # 곡 재생 스크립트
-    async def Play(self, Stream_URL: str, Song_Info: dict):
+    async def Play(self, URL: str, Info: dict):
         async with self.Lock:
             try:
-                Source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(Stream_URL, **self.FFMPEG_Options), volume=self.Volume)
-                self.Current = {"URL": Stream_URL, "Info": Song_Info}
+                Source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(URL, **self.FFMPEG_Options), volume=self.Volume)
+                self.Current = {"URL": URL, "Info": Info}
 
                 if self.On_Song_Start and not any([self.Suppress_Next_Start_Embed, self.Loop, self.Loop_Queue]):
-                    await self.On_Song_Start(Song_Info)
+                    await self.On_Song_Start(Info)
 
                 self.Suppress_Next_Start_Embed = False
                 self.Voice.play(Source, after=lambda Error: self.bot.loop.create_task(self.After_Play(Error)))
             except Exception as Error:
-                Guild = Song_Info["Text_Channel"].guild.name if Info else "알 수 없음"
+                Guild = Info["Text_Channel"].guild.name if Info else "알 수 없음"
                 Print_Log("Music", "음악 재생 중 오류가 발생했습니다.", Guild, "애플리케이션 (MusicPlayer)", Extra=f"({Error})")
 
     # 재생 완료 후 스크립트
     async def After_Play(self, Error):
         if Error:
+            Info = self.Current["Info"] if self.Current else None
             Guild = Info["Text_Channel"].guild.name if Info else "알 수 없음"
             Print_Log("Music", "음악 재생 중 오류가 발생했습니다.", Guild, "애플리케이션 (MusicPlayer)", Extra=f"({Error})")
 
@@ -91,8 +92,8 @@ class MusicPlayer:
         await self.Play(**self.Queue.pop(0))
 
     # 대기열에 곡 추가 스크립트
-    def Add_To_Queue(self, Stream_URL: str, Song_Info: dict):
-        self.Queue.append({"Url": Stream_URL, "Info": Song_Info})
+    def Add_To_Queue(self, URL: str, Info: dict):
+        self.Queue.append({"URL": URL, "Info": Info})
 
     # 이전 곡 재생 스크립트
     async def Play_Previous(self):
@@ -299,16 +300,16 @@ class Music(commands.Cog):
  
     # 애플리케이션 자동 퇴장 스크립트
     @discord.Cog.listener()
-    async def On_Voice_State_Update(self, Member, Before, After):
+    async def on_voice_state_update(self, Member, Before, After):
         if Member.bot:
             return
  
         Player = self.Players.get(Member.guild.id)
  
-        if not Player or not Player.Voice or not Player.Voice.Channel:
+        if not Player or not Player.Voice or not Player.Voice.channel:
             return
  
-        if not any(not M.bot for M in Player.Voice.Channel.members):
+        if not any(not M.bot for M in Player.Voice.channel.members):
             await Player.Stop()
 
     # 곡 정보 빌드 스크립트
@@ -350,54 +351,44 @@ class Music(commands.Cog):
     
     # 곡 Embed 전송 스크립트
     async def Send_Embed_On_Song_Start(self, Song_Info):
-        Channel = Song_Info.get("Text_Channel")
-        if not Channel:
-            return
- 
-        Embed = await self.Build_Embed(Song_Info, None, f"**{Song_Info['Title']}** 음악을 재생하고 있습니다.")
-        await Channel.send(embed=Embed)
+        if Channel := Song_Info.get("Text_Channel"):
+            await Channel.send(embed=await self.Build_Embed(Song_Info, None, f"**{Song_Info['Title']}** 음악을 재생하고 있습니다."))
 
     # 대기열 페이지 표시 스크립트
     def Queue_Page(self, ctx, Player: MusicPlayer, Page_Num: int, Songs_Per_Page=10):
         Queue = Player.Queue
         Start_Index = (Page_Num - 1) * Songs_Per_Page
-        End_Index = min(Start_Index + Songs_Per_Page, len(Queue))
+        End_Index = Start_Index + Songs_Per_Page
  
         if Start_Index >= len(Queue):
             return None, None
  
-        Embed = discord.Embed(title=":notes: 대기열을 표시합니다.", description="현재 대기열 목록:", color=discord.Color.blue())
+        embed = discord.Embed(title=":notes: 대기열을 표시합니다.", description="현재 대기열 목록:", color=discord.Color.blue())
  
         if Player.Current:
             Info = Player.Current["Info"]
-            Embed.add_field(name=f"현재 재생 중: {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}",inline=False)
+            embed.add_field(name=f"현재 재생 중: {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}",inline=False)
  
-        for I in range(Start_Index, End_Index):
-            Info = Queue[I]["Info"]
-            Embed.add_field(name=f"{I + 1}. {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}", inline=False)
+        for I, Song in enumerate(Queue[Start_Index:End_Index], Start=Start_Index + 1):
+            Info = Song["Info"]
+            embed.add_field(name=f"{I}. {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}", inline=False)
  
         Total_Pages = (len(Queue) + Songs_Per_Page - 1) // Songs_Per_Page
-        Embed.set_footer(text=f"페이지 {Page_Num} / {Total_Pages}")
+        embed.set_footer(text=f"페이지 {Page_Num} / {Total_Pages}")
  
-        return Embed, Total_Pages
+        return embed, Total_Pages
 
     # 재생 목록 곡 추가 스크립트
     async def Add_Playlist_To_Queue(self, URL, ctx, Player):
-        Playlist_Obj = Playlist(URL)
-        Videos = list(Playlist_Obj.videos)
- 
         Added = 0
-        Rest_Videos = Videos[1:]
  
-        for YT in Rest_Videos:
+        for YT in list(Playlist(URL).videos)[1:]:
             Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
  
-            if Stream is None:
+            if not Stream:
                 continue
  
-            Info = self.Build_Song_Info(YT, ctx, Queue_Position=len(Player.Queue) + 1)
- 
-            Player.Add_To_Queue(Stream.url, Info)
+            Player.Add_To_Queue(Stream.url, self.Build_Song_Info(YT, ctx))
             Added += 1
         
         await ctx.respond(embed=Success_Dialog_Embed(f"재생목록에서 **{Added}곡**을 대기열에 추가했습니다."))
@@ -410,14 +401,13 @@ class Music(commands.Cog):
  
         Channel = ctx.author.voice.channel
  
-        if ctx.voice_client and ctx.voice_client.channel != Channel:
-            await ctx.respond(embed=Error_Dialog_Embed("애플리케이션이 같은 서버의 다른 음성 채널에서 재생 중입니다. 애플리케이션의 연결을 끊거나 기다린 후 다시 시도하세요."), ephemeral=True)
-            return False
- 
-        if not ctx.voice_client:
-            Player.Voice = await Channel.connect()
-        else:
+        if ctx.voice_client:
+            if ctx.voice_client.channel != Channel:
+                await ctx.respond(embed=Error_Dialog_Embed("애플리케이션이 같은 서버의 다른 음성 채널에서 재생 중입니다. 애플리케이션의 연결을 끊거나 기다린 후 다시 시도하세요."), ephemeral=True)
+                return False
             Player.Voice = ctx.voice_client
+        else:
+            Player.Voice = await Channel.connect()
  
         return True
 
@@ -425,86 +415,88 @@ class Music(commands.Cog):
 
     # 재생 명령어
     @Music.command(name="재생", description="YouTube에서 음악을 찾아 재생합니다.", options=[discord.Option(str, name="제목", description="재생할 음악의 제목 또는 URL", required=True)])
-    async def Play_Music(self, ctx, *, URL: str):
-        Print_Log("Music", "재생 명령어 사용", ctx.guild.name, ctx.author.name)
+    async def Play_Music(self, ctx, *, url: str):
+        Print_Log("Music", "재생 명령어를 사용했습니다.", ctx.guild.name, ctx.author.name)
         await ctx.defer()
  
-        Player = self.Players.get(ctx.guild.id)     # 길드 별 플레이어 지정
- 
-        if not Player:
-            Player = MusicPlayer(self.bot, self.FFMPEG_Options)
-            self.Players[ctx.guild.id] = Player
- 
+        Player = self.Players.setdefault(ctx.guild.id, MusicPlayer(self.bot, self.FFMPEG_Options))     # 길드 별 플레이어 지정
         Player.On_Song_Start = self.Send_Embed_On_Song_Start
  
         # 음성 채널 입장
         if not await self.Ensure_VC(ctx, Player):
             return
- 
-        # 재생 목록 URL 체크
-        if Check_Playlist_URL(URL):
-            Playlist_Obj = Playlist(URL)
-            Videos = list(Playlist_Obj.videos)
-            View = PlaylistConfirmView(ctx.author, URL, Player)
- 
-            First_Video = Videos[0]
-            First_Stream = First_Video.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
-            First_Info = self.Build_Song_Info(First_Video, ctx, Queue_Position=len(Player.Queue) + 1)
- 
+
+        async def Play_Or_Queue(Stream, Info):
             if Player.Is_Playing():
-                Player.Add_To_Queue(First_Stream.url, First_Info)
+                Player.Add_To_Queue(Stream.url, Info)
+                Desc = f"**{Info['Title']}** 음악을 대기열에 추가했습니다."
+                Log = "대기열에 음악을 추가했습니다."
             else:
                 Player.Suppress_Next_Start_Embed = True
-                await Player.Play(First_Stream.url, First_Info)
-                Embed = await self.Build_Embed(First_Info, ctx, Description=f"**{First_Info['Title']}** 음악을 재생하고 있습니다.")
-                await ctx.respond(embed=Embed)
+                await Player.Play(Stream.url, Info)
+                Desc = f"**{Info['Title']}** 음악을 재생하고 있습니다."
+                Log = "음악을 재생했습니다."
+            
+            Print_Log("Music", Log, ctx.guild.name, ctx.author.name)
+            await ctx.respond(embed=await self.Build_Embed(Info, ctx, Description=Desc))
  
-            Embed = discord.Embed(title="📃 재생목록 링크를 감지했습니다.", description="이 재생목록의 모든 곡을 대기열에 추가할까요?")
-            Msg = await ctx.followup.send(embed=Embed, view=View)
-            await View.wait()
+        try:
+            # 재생 목록 URL 체크
+            if Check_Playlist_URL(url):
+                Videos = list(Playlist(url).videos)
+
+                if not Videos:
+                    return await ctx.respond(embed=Error_Dialog_Embed("재생 목록을 찾을 수 없습니다."))
+                
+                View = PlaylistConfirmView(ctx.author, url, Player)
+    
+                First_Video = Videos[0]
+                Stream = First_Video.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
+    
+                if not Stream:
+                    return await ctx.followup.send(embed=Error_Dialog_Embed("재생 목록의 첫 번째 곡을 찾을 수 없습니다."))
+
+                await Play_Or_Queue(Stream, self.Build_Song_Info(First_Video, ctx))
+                Message = await ctx.followup.send(embed=discord.Embed(title="📃 재생목록 링크를 감지했습니다.", description="이 재생목록의 모든 곡을 대기열에 추가할까요?"))
+                await View.wait()
+
+                for Item in View.children:
+                    Item.disabled = True
+
+                await Message.edit(view=View)
+
+                if View.Value is None:
+                    return await ctx.followup.send(embed=Error_Dialog_Embed("시간이 초과되어 동작을 실행하지 않습니다."))
+                
+                if View.Value:
+                    await self.Add_Playlist_To_Queue(url, ctx, Player)
+
+                return await ctx.followup.send(embed=Success_Dialog_Embed("재생목록의 곡을 추가하지 않았습니다."))
  
-            for Item in View.children:
-                Item.disabled = True
-            await Msg.edit(view=View)
- 
-            if View.Value is None:
-                return await ctx.followup.send(embed=Error_Dialog_Embed("시간이 초과되어 동작을 실행하지 않습니다."), ephemeral=True)
- 
-            if not View.Value:
-                return await ctx.followup.send(embed=Success_Dialog_Embed("재생목록의 곡을 추가하지 않았습니다."), ephemeral=True)
- 
-            return await self.Add_Playlist_To_Queue(URL, ctx, Player)
- 
-        # URL 체크
-        if Check_YT_URL(URL):
-            YT = YouTube(URL)
-        else:
-            Search_Obj = Search(URL)
-            if not Search_Obj.results:return await ctx.respond(embed=Error_Dialog_Embed("검색 결과를 찾을 수 없습니다."), ephemeral=True)
-            YT = Search_Obj.results[0]
- 
-        # 곡 정보 저장
-        Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
-        Song_Info = self.Build_Song_Info(YT, ctx, Queue_Position=len(Player.Queue) + 1)
- 
-        # 곡 재생
-        if Player.Is_Playing():
-            Player.Add_To_Queue(Stream.url, Song_Info)
-            Embed = await self.Build_Embed(Song_Info, ctx, Description=f"**{YT.title}** 음악을 대기열에 추가했습니다.")
-            Print_Log("Music", "대기열에 곡 추가 완료", ctx.guild.name, ctx.author.name, Target_Name=YT.title)
-            return await ctx.respond(embed=Embed)
-        else:
-            Player.Suppress_Next_Start_Embed = True
-            await Player.Play(Stream.url, Song_Info)
-            Embed = await self.Build_Embed(Song_Info, ctx, Description=f"**{YT.title}** 음악을 재생하고 있습니다.")
-            return await ctx.respond(embed=Embed)
+            # URL 체크
+            YT = YouTube(url) if Check_YT_URL(url) else (Search(url).results[0] if Search(url).results else None)
+            
+            if not YT:
+                return await ctx.respond(embed=Error_Dialog_Embed("검색 결과를 찾을 수 없습니다."), ephemeral=True)
+    
+            # 곡 정보 저장
+            Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
+    
+            if not Stream:
+                return await ctx.respond(embed=Error_Dialog_Embed("곡을 찾을 수 없습니다."), ephemeral=True)
+
+            # 곡 재생
+            await Play_Or_Queue(Stream, self.Build_Song_Info(YT, ctx))
+        except Exception as e:
+            await ctx.respond(embed=Error_Dialog_Embed(f"음악을 재생하는 중 오류가 발생했습니다. {(e)}"), ephemeral=True)
+            Print_Log("Music", "음악을 재생하는 중 오류가 발생했습니다.", ctx.guild.name, ctx.author.name, Extra=f"{(e)}")
 
     # 검색 명령어
     @Music.command(name="검색", description="YouTube에서 음악을 지정한 개수만큼 검색합니다.", options=[
         discord.Option(str, name="제목", description="검색할 음악의 제목", required=True),
         discord.Option(int, name="개수", description="검색할 개수 (1 ~ 10, 기본값: 5, 선택)", required=False, min_value=1, max_value=10, default=5)])
-    async def Search_Music(self, ctx, *, Query: str, Index: int):
-        Print_Log("Music", "검색 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"검색어: {Query}")
+    async def Search_Music(self, ctx, *, query: str, index: int):
+        Print_Log("Music", "검색 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"검색어: {query}")
         await ctx.defer()
         
         Player = self.Players.get(ctx.guild.id)     # 길드 별 플레이어 지정
@@ -520,14 +512,14 @@ class Music(commands.Cog):
             return
         
         # 검색
-        Search_Obj = Search(Query)
-        Results = Search_Obj.results[:Index]
+        Search_Obj = Search(query)
+        Results = Search_Obj.results[:index]
  
         if not Search_Obj.results:
             return await ctx.respond(embed=Error_Dialog_Embed("검색 결과가 없습니다."), ephemeral=True)
  
         # 검색 결과 표시
-        Embed = discord.Embed(title=f":notes: '{Query}'에 대한 검색 결과", color=discord.Color.blue())
+        Embed = discord.Embed(title=f":notes: '{query}'에 대한 검색 결과", color=discord.Color.blue())
  
         for I, YT in enumerate(Results, start=1):
             Duration = self.Format_Duration(YT.length) if YT.length else "알 수 없음"
@@ -637,29 +629,29 @@ class Music(commands.Cog):
 
     # 곡 반복 명령어
     @Music.command(name="반복", description="현재 음악을 반복할 옵션을 선택합니다.", options=[discord.Option(str, name="모드", description="반복 모드", choices=["대기열", "단일", "끄기"], required=True)])
-    async def Loop_Music(self, ctx, Mode: str):
-        Print_Log("Music", "곡 반복 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"모드: {Mode}")
+    async def Loop_Music(self, ctx, mode: str):
+        Print_Log("Music", "곡 반복 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"모드: {mode}")
         Player = self.Players.get(ctx.guild.id)     # 길드 별 플레이어 지정
  
         if not Player or not Player.Is_Playing():
             return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
  
         # 모드가 대기열 반복이라면
-        if Mode == "대기열":
+        if mode == "대기열":
             Player.Loop_Queue = True
             Player.Loop = False
  
             await ctx.respond(embed=Success_Dialog_Embed("반복 모드를 **대기열 반복**으로 설정했습니다."))
  
         # 모드가 단일 반복이라면
-        elif Mode == "단일":
+        elif mode == "단일":
             Player.Loop = True
             Player.Loop_Queue = False
  
             await ctx.respond(embed=Success_Dialog_Embed("반복 모드를 **단일 반복**으로 설정했습니다."))
  
         # 모드가 끄기라면
-        elif Mode == "끄기":
+        elif mode == "끄기":
             Player.Loop = False
             Player.Loop_Queue = False
  
@@ -723,18 +715,18 @@ class Music(commands.Cog):
  
     # 볼륨 조절 명령어
     @Music.command(name="볼륨", description="음악 볼륨을 조절합니다.", options=[discord.Option(int, name="크기", description="볼륨 크기 (0 ~ 500)", required=True)])
-    async def Set_Volume_Music(self, ctx, Value: int):
-        Print_Log("Music", "볼륨 조절 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"설정 값: {Value}%")
+    async def Set_Volume_Music(self, ctx, value: int):
+        Print_Log("Music", "볼륨 조절 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"설정 값: {value}%")
         Player = self.Players.get(ctx.guild.id)     # 길드 별 플레이어 지정
  
         if not Player or not Player.Voice:
             return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
  
-        if Value < 0 or Value > 500:
+        if value < 0 or value > 500:
             return await ctx.respond(embed=Error_Dialog_Embed("볼륨은 0 이상 500 이하의 정수여야 합니다."), ephemeral=True)
  
-        Player.Set_Volume(Value / 100)     # 볼륨 조절
-        await ctx.respond(embed=Success_Dialog_Embed(f"애플리케이션의 볼륨을 **{Value}%** 로 설정했습니다."))
+        Player.Set_Volume(value / 100)     # 볼륨 조절
+        await ctx.respond(embed=Success_Dialog_Embed(f"애플리케이션의 볼륨을 **{value}%** 로 설정했습니다."))
 
     Queue = Music.create_subgroup("대기열", "대기열 관련 명령어입니다.")    # 대기열 슬래쉬 커맨드 그룹
 
@@ -768,31 +760,31 @@ class Music(commands.Cog):
 
     # 대기열 곡 삭제 명령어
     @Queue.command(name="삭제", description="대기열에서 음악을 삭제합니다.", options=[discord.Option(int, name="번호", description="삭제할 음악의 번호", required=True)])
-    async def Queue_Delete(self, ctx, Position: int):
-        Print_Log("Music", "대기열 곡 삭제 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"위치: {Position}")
+    async def Queue_Delete(self, ctx, position: int):
+        Print_Log("Music", "대기열 곡 삭제 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"위치: {position}")
         Player = self.Players.get(ctx.guild.id)     # 길드 별 플레이어 지정
  
         if not Player or not Player.Queue:
             return await ctx.respond(embed=Error_Dialog_Embed("대기열에 음악이 존재하지 않습니다."), ephemeral=True)
  
-        if Position < 1 or Position > len(Player.Queue):
+        if position < 1 or position > len(Player.Queue):
             return await ctx.respond(embed=Error_Dialog_Embed(f"올바른 번호를 입력하세요. (1 ~ {len(Player.Queue)})"), ephemeral=True)
  
-        Removed = Player.Queue.pop(Position - 1)
+        Removed = Player.Queue.pop(position - 1)
         Title = Removed["Info"]["Title"]
  
         await ctx.respond(embed=Success_Dialog_Embed(f"**{Title}** 음악을 대기열에서 삭제했습니다."))
 
     # 대기열에서 곡 재생 명령어
     @Queue.command(name="재생", description="대기열에서 원하는 번호의 곡을 바로 재생합니다.", options=[discord.Option(int, name="번호", description="재생할 곡의 번호", required=True)])
-    async def Queue_Play(self, ctx, Num: int):
-        Print_Log("Music", "대기열에서 곡 재생 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"위치: {Num}")
+    async def Queue_Play(self, ctx, num: int):
+        Print_Log("Music", "대기열에서 곡 재생 명령어 사용", ctx.guild.name, ctx.author.name, Extra=f"위치: {num}")
         Player = self.Players.get(ctx.guild.id)     # 길드 별 플레이어 지정
  
         if not Player or not Player.Queue:
             return await ctx.respond(embed=Error_Dialog_Embed("대기열에 음악이 존재하지 않습니다."), ephemeral=True)
  
-        if Num < 1 or Num > len(Player.Queue):
+        if num < 1 or num > len(Player.Queue):
             return await ctx.respond(embed=Error_Dialog_Embed(f"올바른 번호를 입력하세요. (1 ~ {len(Player.Queue)})"), ephemeral=True)
 
         
@@ -801,12 +793,12 @@ class Music(commands.Cog):
             return
 
         Members = [M for M in Voice.channel.members if not M.bot]   # 음성 채널 사용자 수 감지 (애플리케이션 제외)
-        Queue_Item = Player.Queue[Num - 1]
+        Queue_Item = Player.Queue[num - 1]
         Title = Queue_Item["Info"]["Title"]    # 곡 이름 불러오기
 
         # 사용자가 1명이거나 관리자이면 즉시 곡 재생
         if len(Members) <= 1 or ctx.author.guild_permissions.administrator:
-            Success = await Player.Play_From_Queue(Num)
+            Success = await Player.Play_From_Queue(num)
 
             if not Success:
                 return await ctx.respond(embed=Error_Dialog_Embed("음악을 재생하지 못했습니다."), ephemeral=True)
@@ -826,7 +818,7 @@ class Music(commands.Cog):
         
         async def Action():
             Player.Suppress_Next_Start_Embed = True
-            await Player.Play_From_Queue(Num)
+            await Player.Play_From_Queue(num)
  
         View = VoteView(ctx, Player, Required_Votes, Action=Action, Success_Message=f":white_check_mark: 투표가 통과되어 **{Title}** 음악을 재생합니다.")
         await ctx.respond(embed=Embed, view=View)

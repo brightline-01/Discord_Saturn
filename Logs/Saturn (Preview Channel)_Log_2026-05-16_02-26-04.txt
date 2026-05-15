@@ -1,0 +1,29 @@
+[2026-05-16 02:26:04] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 02:26:04] Traceback (most recent call last):
+[2026-05-16 02:26:04]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 821, in _load_from_module_spec
+    setup(self)
+    ~~~~~^^^^^^
+[2026-05-16 02:26:04]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 840, in setup
+    bot.add_cog(Music(bot))
+    ~~~~~~~~~~~^^^^^^^^^^^^
+[2026-05-16 02:26:04]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 691, in add_cog
+    cog = cog._inject(self)
+[2026-05-16 02:26:04]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 612, in _inject
+    bot.add_listener(getattr(self, method_name), name)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 02:26:04]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 1395, in add_listener
+    raise ValueError("The 'name' parameter must start with 'on_'")
+[2026-05-16 02:26:04] ValueError: The 'name' parameter must start with 'on_'
+[2026-05-16 02:26:04] 
+The above exception was the direct cause of the following exception:
+
+[2026-05-16 02:26:04] Traceback (most recent call last):
+[2026-05-16 02:26:04]   File "d:\Github_Projects\Discord_Saturn\preview\App.py", line 11, in <module>
+    bot.load_extension(f'Cogs.{filename[:-3]}')
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 02:26:04]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 943, in load_extension
+    self._load_from_module_spec(spec, name)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+[2026-05-16 02:26:04]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\cog.py", line 826, in _load_from_module_spec
+    raise errors.ExtensionFailed(key, e) from e
+[2026-05-16 02:26:04] discord.errors.ExtensionFailed: Extension 'Cogs.Music' raised an error: ValueError: The 'name' parameter must start with 'on_'
