@@ -1,8 +1,4 @@
-import discord
-import datetime
-import re
-import asyncio
-import random
+import discord, datetime, re, asyncio, random
 from discord.ext import commands
 from pytubefix import YouTube, Search, Playlist
 from Resources import Current_Time, Error_Dialog_Embed, Success_Dialog_Embed, Print_Log

@@ -29,8 +29,12 @@ class Launcher(commands.Cog):
         print('-----------------------------------')
 
         # 슬래쉬 커맨드 동기화 스크립트
-        await self.bot.sync_commands(guild_ids=[DEBUG_GUILD])
-        print('[Launcher] 슬래쉬 커맨드를 동기화했습니다.')
+        if DEBUG_GUILD:
+            await self.bot.sync_commands(guild_ids=[DEBUG_GUILD])
+            print(f'[Launcher] 슬래쉬 커맨드를 설정된 서버에 동기화했습니다.')
+        else:
+            await self.bot.sync_commands()
+            print('[Launcher] 슬래쉬 커맨드를 전역으로 동기화했습니다.')
 
         # Presence 변경 작업이 실행 중이지 않으면 시작
         if not self.Change_Presence.is_running():
