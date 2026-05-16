@@ -72,7 +72,7 @@ class MusicPlayer:
  
         # 음악 반복 재생 여부 확인
         if self.Loop and self.Current:
-            return await self.Play(**self.current)
+            return await self.Play(**self.Current)
         
         # 재생 기록 저장
         if self.Current:
@@ -225,8 +225,8 @@ class QueueView(discord.ui.View):
 
         Buttons = [
             ("⏪", self.Page > 1, lambda i: self.Update_Page(i, 1)),
-            ("⬅️", self.Page > 1, lambda i: self.Update_Page(i, -1)),
-            ("➡️", self.Page < Total_Pages, lambda i: self.Update_Page(i, 1)),
+            ("⬅️", self.Page > 1, lambda i: self.Update_Page(i, self.Page - 1)),
+            ("➡️", self.Page < Total_Pages, lambda i: self.Update_Page(i, self.Page + 1)),
             ("⏩", self.Page < Total_Pages, lambda i: self.Update_Page(i, Total_Pages))
         ]
  
@@ -403,7 +403,7 @@ class Music(commands.Cog):
             embed.add_field(name=f"현재 재생 중: {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}",inline=False)
  
         # 음악 정보 추가
-        for I, Song in enumerate(Queue[Start_Index:End_Index], Start=Start_Index + 1):
+        for I, Song in enumerate(Queue[Start_Index:End_Index], start=Start_Index + 1):
             Info = Song["Info"]
             embed.add_field(name=f"{I}. {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}", inline=False)
  
@@ -469,9 +469,10 @@ class Music(commands.Cog):
  
         # 대기열 상태 확인
         if not Player or not Player.Queue:
-            return await ctx.respond(embed=Error_Dialog_Embed("대기열에 음악이 없습니다."), ephemeral=True)
+            await ctx.respond(embed=Error_Dialog_Embed("대기열에 음악이 없습니다."), ephemeral=True)
+            return None
  
-        return True
+        return Player
 
     Music = discord.SlashCommandGroup("음악")
 
@@ -525,7 +526,7 @@ class Music(commands.Cog):
 
                 # 첫 번째 음악 재생
                 await Play_Or_Queue(Stream, self.Build_Song_Info(First_Video, ctx))
-                Message = await ctx.followup.send(embed=discord.Embed(title="📃 재생목록 링크를 감지했습니다.", description="이 재생목록의 모든 음악을 대기열에 추가할까요?"))
+                Message = await ctx.followup.send(embed=discord.Embed(title="📃 재생목록 링크를 감지했습니다.", description="이 재생목록의 모든 음악을 대기열에 추가할까요?"), view=View)
                 await View.wait()
 
                 for Item in View.children:
@@ -540,8 +541,10 @@ class Music(commands.Cog):
                 # 재생 목록 추가
                 if View.Value:
                     await self.Add_Playlist_To_Queue(URL, ctx, Player)
-
-                return await ctx.followup.send(embed=Success_Dialog_Embed("재생목록의 음악을 추가하지 않았습니다."))
+                else:
+                    await ctx.followup.send(embed=Success_Dialog_Embed("재생목록의 음악을 추가하지 않았습니다."))
+                
+                return
  
             # YouTube URL 검증
             YT = YouTube(URL) if Check_YouTube_URL(URL) else (Search(URL).results[0] if Search(URL).results else None)
@@ -786,7 +789,7 @@ class Music(commands.Cog):
     @Queue.command(name="목록", description="대기열을 표시합니다.")
     async def Queue_List(self, ctx):
         # 서버 별 플레이어 지정
-        Player = self.Check_Queue(ctx)
+        Player = await self.Check_Queue(ctx)
  
         # 재생 상태 확인
         if not Player:
@@ -801,7 +804,7 @@ class Music(commands.Cog):
     @Queue.command(name="초기화", description="대기열을 초기화합니다.")
     async def Queue_Clear(self, ctx):
         # 서버 별 플레이어 지정
-        Player = self.Check_Queue(ctx)
+        Player = await self.Check_Queue(ctx)
  
         # 재생 상태 확인
         if not Player:
@@ -819,7 +822,7 @@ class Music(commands.Cog):
     @Queue.command(name="삭제", description="대기열에서 음악을 삭제합니다.")
     async def Queue_Delete(self, ctx, Position: discord.Option(int, name="번호", description="삭제할 음악의 번호", required=True)):
         # 서버 별 플레이어 지정
-        Player = self.Check_Queue(ctx)
+        Player = await self.Check_Queue(ctx)
  
         # 재생 상태 확인
         if not Player:
@@ -838,7 +841,7 @@ class Music(commands.Cog):
     @Queue.command(name="재생", description="대기열에서 원하는 번호의 음악을 바로 재생합니다.")
     async def Queue_Play(self, ctx, Num: discord.Option(int, name="번호", description="재생할 음악의 번호", required=True)):
         # 서버 별 플레이어 지정
-        Player = self.Check_Queue(ctx)
+        Player = await self.Check_Queue(ctx)
  
         # 재생 상태 확인
         if not Player:
@@ -886,7 +889,7 @@ class Music(commands.Cog):
     @Queue.command(name="셔플", description="대기열을 셔플합니다.")
     async def Queue_Shuffle(self, ctx):
         # 서버 별 플레이어 지정
-        Player = self.Check_Queue(ctx)
+        Player = await self.Check_Queue(ctx)
  
         # 재생 상태 확인
         if not Player:

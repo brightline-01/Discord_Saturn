@@ -290,7 +290,7 @@ class Settings(commands.Cog):
             Save_Data(self.Settings_Data_Path, Settings)
             
             embed = discord.Embed(
-                title="✅ 멤버 인증",
+                title="멤버 인증",
                 description=Description or "✅ 인증하기 버튼을 클릭하여 인증하세요.",
                 color=discord.Color.green()
             )

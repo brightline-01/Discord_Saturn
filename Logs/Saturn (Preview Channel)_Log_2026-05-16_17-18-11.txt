@@ -1,0 +1,47 @@
+[2026-05-16 17:18:11] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 17:18:17] [Launcher] 애플리케이션과 연결했습니다.
+[2026-05-16 17:18:17] -----------------------------------
+[2026-05-16 17:18:17] 애플리케이션 이름: Saturn (Preview Channel)
+[2026-05-16 17:18:17] 애플리케이션 ID: 1438130478497398815
+[2026-05-16 17:18:17] 애플리케이션 버전: v2.0_preview
+[2026-05-16 17:18:17] -----------------------------------
+[2026-05-16 17:18:18] [Launcher] 슬래쉬 커맨드를 동기화했습니다.
+[2026-05-16 17:18:18] [Launcher] Presence 변경 작업을 시작했습니다.
+[2026-05-16 17:18:34] [Music] 음악을 재생했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:18:47] [Settings] 인증 메세지를 생성했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:19:16] [Music] 음악을 정지했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:19:24] [Music] 음악을 재생했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:19:47] [Music] 대기열을 표시했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:20:43] [Music] 대기열을 표시했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:22:05] Task was destroyed but it is pending!
+task: <Task pending name='Task-118' coro=<MusicPlayer.After_Play() running at d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py:61>>
+[2026-05-16 17:22:05] C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:750: RuntimeWarning: coroutine 'MusicPlayer.After_Play' was never awaited
+  self._ready.clear()
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+[2026-05-16 17:22:05] Traceback (most recent call last):
+[2026-05-16 17:22:05]   File "d:\Github_Projects\Discord_Saturn\preview\App.py", line 11, in <module>
+    bot.run(APP_TOKEN)
+    ~~~~~~~^^^^^^^^^^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 873, in run
+    _cleanup_loop(loop)
+    ~~~~~~~~~~~~~^^^^^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 126, in _cleanup_loop
+    _cancel_tasks(loop)
+    ~~~~~~~~~~~~~^^^^^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 108, in _cancel_tasks
+    loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+    ~~~~~~~~~~~~~~~~^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+    ~~~~~~~~~~~~~~^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2012, in _run_once
+    event_list = self._selector.select(timeout)
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\windows_events.py", line 446, in select
+    self._poll(timeout)
+    ~~~~~~~~~~^^^^^^^^^
+[2026-05-16 17:22:05]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\windows_events.py", line 775, in _poll
+    status = _overlapped.GetQueuedCompletionStatus(self._iocp, ms)
+[2026-05-16 17:22:05] KeyboardInterrupt

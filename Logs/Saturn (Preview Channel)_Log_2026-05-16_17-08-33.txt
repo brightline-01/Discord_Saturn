@@ -1,0 +1,60 @@
+[2026-05-16 17:08:33] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 17:08:39] [Launcher] 애플리케이션과 연결했습니다.
+[2026-05-16 17:08:39] -----------------------------------
+[2026-05-16 17:08:39] 애플리케이션 이름: Saturn (Preview Channel)
+[2026-05-16 17:08:39] 애플리케이션 ID: 1438130478497398815
+[2026-05-16 17:08:39] 애플리케이션 버전: v2.0_preview
+[2026-05-16 17:08:39] -----------------------------------
+[2026-05-16 17:08:40] [Launcher] 슬래쉬 커맨드를 동기화했습니다.
+[2026-05-16 17:08:40] [Launcher] Presence 변경 작업을 시작했습니다.
+[2026-05-16 17:08:46] [Music] 음악을 재생했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:09:06] [Music] 음악 반복 모드를 설정했습니다. (서버: SolarLabs Community, 요청자: .__serin__., 모드: 대기열)
+[2026-05-16 17:09:10] Ignoring exception in command 음악 대기열 목록:
+[2026-05-16 17:09:10] Traceback (most recent call last):
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 135, in wrapped
+    ret = await coro(arg)
+          ^^^^^^^^^^^^^^^
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1106, in _invoke
+    await self.callback(self.cog, ctx, **kwargs)
+[2026-05-16 17:09:10]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 796, in Queue_List
+    Embed, _ = self.Queue_Page(ctx, Player, 1)
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[2026-05-16 17:09:10]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 389, in Queue_Page
+    Queue = Player.Queue
+            ^^^^^^^^^^^^
+[2026-05-16 17:09:10] AttributeError: 'coroutine' object has no attribute 'Queue'
+[2026-05-16 17:09:10] 
+The above exception was the direct cause of the following exception:
+
+[2026-05-16 17:09:10] Traceback (most recent call last):
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\bot.py", line 1164, in invoke_application_command
+    await ctx.command.invoke(ctx)
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 432, in invoke
+    await injected(ctx)
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 135, in wrapped
+    ret = await coro(arg)
+          ^^^^^^^^^^^^^^^
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1523, in _invoke
+    await command.invoke(ctx)
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 432, in invoke
+    await injected(ctx)
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 135, in wrapped
+    ret = await coro(arg)
+          ^^^^^^^^^^^^^^^
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1523, in _invoke
+    await command.invoke(ctx)
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 432, in invoke
+    await injected(ctx)
+[2026-05-16 17:09:10]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 143, in wrapped
+    raise ApplicationCommandInvokeError(exc) from exc
+[2026-05-16 17:09:10] discord.errors.ApplicationCommandInvokeError: Application Command raised an exception: AttributeError: 'coroutine' object has no attribute 'Queue'
+[2026-05-16 17:09:10] C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py:89: RuntimeWarning: coroutine 'Music.Check_Queue' was never awaited
+  self._context.run(self._callback, *self._args)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+[2026-05-16 17:09:58] Task exception was never retrieved
+future: <Task finished name='Task-46' coro=<MusicPlayer.After_Play() done, defined at d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py:61> exception=AttributeError("'MusicPlayer' object has no attribute 'current'")>
+Traceback (most recent call last):
+  File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 75, in After_Play
+    return await self.Play(**self.current)
+                             ^^^^^^^^^^^^
+AttributeError: 'MusicPlayer' object has no attribute 'current'. Did you mean: 'Current'?

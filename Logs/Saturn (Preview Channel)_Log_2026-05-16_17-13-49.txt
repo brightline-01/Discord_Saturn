@@ -1,0 +1,82 @@
+[2026-05-16 17:13:49] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 17:13:52] [Launcher] 애플리케이션과 연결했습니다.
+[2026-05-16 17:13:52] -----------------------------------
+[2026-05-16 17:13:52] 애플리케이션 이름: Saturn (Preview Channel)
+[2026-05-16 17:13:52] 애플리케이션 ID: 1438130478497398815
+[2026-05-16 17:13:52] 애플리케이션 버전: v2.0_preview
+[2026-05-16 17:13:52] -----------------------------------
+[2026-05-16 17:13:54] [Launcher] 슬래쉬 커맨드를 동기화했습니다.
+[2026-05-16 17:13:54] [Launcher] Presence 변경 작업을 시작했습니다.
+[2026-05-16 17:14:07] [Music] 음악을 재생했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:14:26] [Music] 음악을 정지했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:14:35] [Music] 음악을 재생했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:14:56] Ignoring exception in command 음악 대기열 목록:
+[2026-05-16 17:14:56] Traceback (most recent call last):
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 135, in wrapped
+    ret = await coro(arg)
+          ^^^^^^^^^^^^^^^
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1106, in _invoke
+    await self.callback(self.cog, ctx, **kwargs)
+[2026-05-16 17:14:56]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 799, in Queue_List
+    Embed, _ = self.Queue_Page(ctx, Player, 1)
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+[2026-05-16 17:14:56]   File "d:\Github_Projects\Discord_Saturn\preview\Cogs\Music.py", line 406, in Queue_Page
+    for I, Song in enumerate(Queue[Start_Index:End_Index], Start=Start_Index + 1):
+                   ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 17:14:56] TypeError: 'Start' is an invalid keyword argument for enumerate()
+[2026-05-16 17:14:56] 
+The above exception was the direct cause of the following exception:
+
+[2026-05-16 17:14:56] Traceback (most recent call last):
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\bot.py", line 1164, in invoke_application_command
+    await ctx.command.invoke(ctx)
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 432, in invoke
+    await injected(ctx)
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 135, in wrapped
+    ret = await coro(arg)
+          ^^^^^^^^^^^^^^^
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1523, in _invoke
+    await command.invoke(ctx)
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 432, in invoke
+    await injected(ctx)
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 135, in wrapped
+    ret = await coro(arg)
+          ^^^^^^^^^^^^^^^
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 1523, in _invoke
+    await command.invoke(ctx)
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 432, in invoke
+    await injected(ctx)
+[2026-05-16 17:14:56]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py", line 143, in wrapped
+    raise ApplicationCommandInvokeError(exc) from exc
+[2026-05-16 17:14:56] discord.errors.ApplicationCommandInvokeError: Application Command raised an exception: TypeError: 'Start' is an invalid keyword argument for enumerate()
+[2026-05-16 17:15:25] [Music] 음악을 일시정지했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:15:29] [Music] 음악을 재개했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:15:32] [Music] 대기열을 셔플했습니다. (서버: SolarLabs Community, 요청자: .__serin__.)
+[2026-05-16 17:18:07] [Music] 음악을 재생하는 중 오류가 발생했습니다. (서버: SolarLabs Community, 요청자: 애플리케이션 (MusicPlayer), (Session is closed))
+[2026-05-16 17:18:09] Traceback (most recent call last):
+[2026-05-16 17:18:09]   File "d:\Github_Projects\Discord_Saturn\preview\App.py", line 11, in <module>
+    bot.run(APP_TOKEN)
+    ~~~~~~~^^^^^^^^^^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 873, in run
+    _cleanup_loop(loop)
+    ~~~~~~~~~~~~~^^^^^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 126, in _cleanup_loop
+    _cancel_tasks(loop)
+    ~~~~~~~~~~~~~^^^^^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\client.py", line 108, in _cancel_tasks
+    loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 712, in run_until_complete
+    self.run_forever()
+    ~~~~~~~~~~~~~~~~^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 683, in run_forever
+    self._run_once()
+    ~~~~~~~~~~~~~~^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 2012, in _run_once
+    event_list = self._selector.select(timeout)
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\windows_events.py", line 446, in select
+    self._poll(timeout)
+    ~~~~~~~~~~^^^^^^^^^
+[2026-05-16 17:18:09]   File "C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\asyncio\windows_events.py", line 775, in _poll
+    status = _overlapped.GetQueuedCompletionStatus(self._iocp, ms)
+[2026-05-16 17:18:09] KeyboardInterrupt
