@@ -9,6 +9,7 @@ class Utility(commands.Cog):
 
     Utility_CMDGroup = discord.SlashCommandGroup("유틸리티")
 
+    # /유틸리티 핑
     @Utility_CMDGroup.command(name="핑", description="애플리케이션의 레이턴시를 표시합니다.")
     async def Ping(self, ctx):
         Latency = round(self.bot.latency * 1000)
@@ -17,6 +18,7 @@ class Utility(commands.Cog):
         .add_field(name="애플리케이션 서버 위치", value="대한민국, 서울", inline=True)
         .set_footer(text=f"일시: {Current_Time()}"))
 
+    # /유틸리티 번역 [내용] [언어]
     @Utility_CMDGroup.command(name="번역", description="텍스트를 다른 언어로 번역합니다.")
     async def Translate(self, ctx, Text: discord.Option(str, name="내용", description="번역할 내용"),
         Dest: discord.Option(str, name="언어", description="번역할 언어 코드 (ex: ko, en, ja)")):
