@@ -1,0 +1,12 @@
+[2026-05-16 19:29:57] [Logger] 로깅 시스템을 초기화했습니다.
+[2026-05-16 19:30:02] [Launcher] 애플리케이션과 연결했습니다.
+[2026-05-16 19:30:02] -----------------------------------
+[2026-05-16 19:30:02] 애플리케이션 이름: Saturn (Preview Channel)
+[2026-05-16 19:30:02] 애플리케이션 ID: 1438130478497398815
+[2026-05-16 19:30:02] 애플리케이션 버전: v2.1_preview
+[2026-05-16 19:30:02] -----------------------------------
+[2026-05-16 19:30:10] C:\Users\Serin\AppData\Local\Programs\Python\Python313\Lib\site-packages\discord\commands\core.py:1106: RuntimeWarning: coroutine 'Translator.translate' was never awaited
+  await self.callback(self.cog, ctx, **kwargs)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+[2026-05-16 19:30:52] [Launcher] 슬래쉬 커맨드를 설정된 서버에 동기화했습니다.
+[2026-05-16 19:30:52] [Launcher] Presence 변경 작업을 시작했습니다.
