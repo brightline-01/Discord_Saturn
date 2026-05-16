@@ -1,7 +1,7 @@
 import discord, aiohttp
 from discord.ext import commands
 from googletrans import Translator
-from Resources import Error_Dialog_Embed, Current_Time
+from Resources import Error_Dialog_Embed, Current_Time, Print_Log
 
 class Utility(commands.Cog):
     def __init__(self, bot):
@@ -17,6 +17,7 @@ class Utility(commands.Cog):
         .add_field(name="애플리케이션 레이턴시", value=f"{Latency} ms", inline=True)
         .add_field(name="애플리케이션 서버 위치", value="대한민국, 서울", inline=True)
         .set_footer(text=f"일시: {Current_Time()}"))
+        Print_Log("Utility", "애플리케이션 레이턴시를 표시했습니다.", ctx.guild.name if ctx.guild else "다이렉트 메세지", ctx.author.name)
 
     # /유틸리티 번역 [내용] [언어]
     @Utility_CMDGroup.command(name="번역", description="텍스트를 다른 언어로 번역하여 전송합니다.")
@@ -25,10 +26,12 @@ class Utility(commands.Cog):
         
         try:
             await ctx.defer()
-            Result = Translator().translate(Text, dest=Dest)
+            Result = await Translator().translate(Text, dest=Dest)
             await ctx.respond(f"**{ctx.author.mention}**: {Result.text}")
+            Print_Log("Utility", "메세지를 번역했습니다.", ctx.guild.name if ctx.guild else "다이렉트 메세지", ctx.author.name)
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"메세지를 번역하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+            Print_Log("Utility", "메세지를 번역하는 중 오류가 발생했습니다.", ctx.guild.name if ctx.guild else "다이렉트 메세지", ctx.author.name, Extra=f"({e})")
 
     # /유틸리티 환율 [기준] [변환] [금액]
     @Utility_CMDGroup.command(name="환율", description="실시간 환율 정보를 표시합니다.")
@@ -58,8 +61,10 @@ class Utility(commands.Cog):
                 Embed.add_field(name="기준 환율", value=f"1 {Base.upper()} = {Rate:,.2f} {Target.upper()}", inline=False)
                 Embed.set_footer(text=f"업데이트 일시: {Data.get('date')} | {Current_Time()}")
                 await ctx.respond(embed=Embed)
+                Print_Log("Utility", "환율 정보를 표시했습니다.", ctx.guild.name if ctx.guild else "다이렉트 메세지", ctx.author.name)
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"환율 정보를 표시하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+            Print_Log("Utility", "환율 정보를 표시하는 중 오류가 발생했습니다.", ctx.guild.name if ctx.guild else "다이렉트 메세지", ctx.author.name, Extra=f"({e})")
 
 def setup(bot):
     bot.add_cog(Utility(bot))
