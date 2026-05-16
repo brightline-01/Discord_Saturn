@@ -27,7 +27,7 @@ class Utility(commands.Cog):
         try:
             await ctx.defer()
             Result = await Translator().translate(Text, dest=Dest)
-            await ctx.respond(f"**{ctx.author.mention}**: {Result}")
+            await ctx.respond(f"**{ctx.author.mention}**: {Result.text}")
             Print_Log("Utility", "메세지를 번역했습니다.", ctx.guild.name if ctx.guild else "다이렉트 메세지", ctx.author.name)
         except Exception as e:
             await ctx.respond(embed=Error_Dialog_Embed(f"메세지를 번역하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
