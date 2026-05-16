@@ -66,7 +66,7 @@ class Moderate(commands.Cog):
     # 도배 감지 엔진
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.author.bot or not message.guild or message.author.guild_permissions.adminstrator or message.author.guild_permissions.manage_messages:
+        if message.author.bot or not message.guild or message.author.guild_permissions.administrator or message.author.guild_permissions.manage_messages:
             return
 
         # 설정 불러오기
