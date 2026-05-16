@@ -5,872 +5,902 @@ import asyncio
 import random
 from discord.ext import commands
 from pytubefix import YouTube, Search, Playlist
+from Resources import Current_Time, Error_Dialog_Embed, Success_Dialog_Embed, Print_Log
 
-# URL 체크 스크립트
-def Check_YT_URL(text: str) -> bool:
-    return re.match(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/", text) is not None
+# YouTube URL 검증 스크립트
+def Check_YouTube_URL(Text):
+    return bool(re.match(r"(https?://)?(www\.)?(youtube\.com|youtu\.be)/", Text))
 
-# 재생 목록 URL 체크 스크립트
-def Check_Playlist_URL(url: str) -> bool:
-    return "list=" in url
+# YouTube 재생 목록 URL 검증 스크립트
+def Check_Playlist_URL(URL):
+    return "list=" in URL
 
 # MusicPlayer 클래스
 class MusicPlayer:
-    def __init__(self, bot, FFMPEG_OPTIONS: dict):
+    def __init__(self, bot, FFmpeg_Options: dict):
         self.bot = bot
-        self.FFMPEG_OPTIONS = FFMPEG_OPTIONS    # FFMPEG 옵션
-        self.voice: discord.VoiceClient | None = None   # Voice Client
-        self.queue: list[dict] = []     # 대기열
-        self.history: list[dict] = []   # 이전 곡
-        self.current: dict | None = None    # 현재 곡
-        self._lock = asyncio.Lock()     # Asyncio Lock
-        self.loop = False   # 단일 반복 (기본 False)
-        self.loop_queue = False     # 대기열 반복 (기본 False)
-        self.on_song_start = None   # 곡 재생 시
-        self.suppress_next_start_embed = False  # Embed 출력 여부
-        self.volume = 1.0   # 볼륨 (기본 1.0)
-        self._manual_stop = False   # 이전 곡으로 인한 정지
+        self.FFmpeg_Options = FFmpeg_Options
+        self.Voice: discord.VoiceClient | None = None
+        self.Queue = []
+        self.History = []
+        self.Current = None
+        self.Lock = asyncio.Lock()
+        self.Loop = False
+        self.Loop_Queue = False
+        self.On_Song_Start = None
+        self.Suppress_Next_Start_Embed = False
+        self.Volume = 1.0
+        self.Manual_Stop = False
     
-    # 곡 재생 상태 체크 스크립트
-    def is_playing(self) -> bool:
-        return self.voice is not None and self.voice.is_playing()
+    # 음악 재생 상태 확인 스크립트
+    def Is_Playing(self):
+        return self.Voice and self.Voice.is_playing()
 
-    # 일시 정지 상태 체크 스크립트
-    def is_paused(self) -> bool:
-        return self.voice is not None and self.voice.is_paused()
+    # 음악 일시 정지 상태 확인 스크립트
+    def Is_Paused(self):
+        return self.Voice and self.Voice.is_paused()
 
-    # 곡 재생 스크립트
-    async def play(self, stream_url: str, song_info: dict):
-        async with self._lock:
+    # 음악 재생 스크립트
+    async def Play(self, URL: str, Info: dict):
+        async with self.Lock:
             try:
-                source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(stream_url, **self.FFMPEG_OPTIONS), volume=self.volume)
-                self.current = {"url": stream_url, "info": song_info}
-                if self.on_song_start and not self.suppress_next_start_embed and not self.loop and not self.loop_queue:
-                    await self.on_song_start(song_info)
-                self.suppress_next_start_embed = False
-                self.voice.play(source, after=lambda e: self.bot.loop.create_task(self._after_play(e)))
-            except Exception as e:
-                print(f"[Music | MusicPlayer] 재생 오류: {e}")
+                # 오디오 소스 생성 및 현재 음악 정보 저장
+                Source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(URL, **self.FFmpeg_Options), volume=self.Volume)
+                self.Current = {"URL": URL, "Info": Info}
 
-    # 곡 정지 시 스크립트
-    async def _after_play(self, error):
-        if error:
-            print(f"[MusicPlayer] FFmpeg 오류: {error}")
+                if self.On_Song_Start and not any([self.Suppress_Next_Start_Embed, self.Loop, self.Loop_Queue]):
+                    await self.On_Song_Start(Info)
 
-        if self._manual_stop:
-            self._manual_stop = False
+                self.Suppress_Next_Start_Embed = False
+                self.Voice.play(Source, after=lambda Error: self.bot.loop.create_task(self.After_Play(Error)))
+            except Exception as Error:
+                Guild = Info["Text_Channel"].guild.name if Info else "알 수 없음"
+                Print_Log("Music", "음악을 재생하는 중 오류가 발생했습니다.", Guild, "애플리케이션 (MusicPlayer)", Extra=f"({Error})")
+
+    # 음악 재생 완료 후 스크립트
+    async def After_Play(self, Error):
+        # 재생 중 오류 발생 여부 확인
+        if Error:
+            Info = self.Current["Info"] if self.Current else None
+            Guild = Info["Text_Channel"].guild.name if Info else "알 수 없음"
+            Print_Log("Music", "음악을 재생하는 중 오류가 발생했습니다.", Guild, "애플리케이션 (MusicPlayer)", Extra=f"({Error})")
+
+        # 수동 정지 여부 확인
+        if self.Manual_Stop:
+            self.Manual_Stop = False
             return
-
-        if self.loop and self.current:
-            return await self.play(self.current["url"], self.current["info"])
-
-        if self.current:
-            self.history.append(self.current)
-            
-            if self.loop_queue:
-                self.queue.append(self.current)
-
-        await self.play_next()
-
-    # 다음 곡 재생 스크립트
-    async def play_next(self):
-        if not self.queue:
-            self.current = None
-
-            if self.voice and self.voice.is_connected():
-                await self.voice.disconnect()
-                self.voice = None
-
-            return
-
-        next_song = self.queue.pop(0)
-        await self.play(next_song["url"], next_song["info"])
-
-    # 대기열에 곡 추가 스크립트
-    def Add_to_Queue(self, stream_url: str, song_info: dict):
-        self.queue.append({"url": stream_url, "info": song_info})
-
-    # 이전 곡 재생 스크립트
-    async def play_previous(self):
-        if not self.history:
-            return False
-
-        prev = self.history.pop()
-        prev_loop = self.loop
-        prev_loop_queue = self.loop_queue
-        self.loop = False
-        self.loop_queue = False
-        self._manual_stop = True
-
-        self.queue.insert(0, self.current)
-            
-        if self.voice and self.voice.is_playing():
-            self.voice.stop()
+ 
+        # 음악 반복 재생 여부 확인
+        if self.Loop and self.Current:
+            return await self.Play(**self.Current)
         
-        await self.play(prev["url"], prev["info"])
+        # 재생 기록 저장
+        if self.Current:
+            self.History.append(self.Current)
+            
+        # 대기열 반복 재생 여부 확인
+        if self.Loop_Queue:
+            self.Queue.append(self.Current)
+        
+        # 다음 음악 재생
+        await self.Play_Next()
 
-        self.loop = prev_loop
-        self.loop_queue = prev_loop_queue
+    # 다음 음악 재생 스크립트
+    async def Play_Next(self):
+        # 대기열에 음악이 없는 경우 확인
+        if not self.Queue:
+            self.Current = None
+ 
+            # 음성 연결을 해제함
+            if self.Voice and self.Voice.is_connected():
+                await self.Voice.disconnect()
+            
+            self.Voice = None
+            return
+ 
+        # 음악 재생
+        await self.Play(**self.Queue.pop(0))
 
+    # 대기열에 음악 추가 스크립트
+    def Add_To_Queue(self, URL: str, Info: dict):
+        self.Queue.append({"URL": URL, "Info": Info})
+
+    # 이전 음악 재생 스크립트
+    async def Play_Previous(self):
+        # 재생 기록 확인
+        if not self.History:
+            return False
+ 
+        # 이전 음악 가져오기
+        Prev = self.History.pop()
+        self.Manual_Stop = True
+        Loop, Queue_Loop = self.Loop, self.Loop_Queue
+        self.Loop = self.Loop_Queue = False
+ 
+        # 현재 음악을 대기열에 추가
+        if self.Current:
+            self.Queue.insert(0, self.Current)
+        
+        # 음악 정지
+        if self.Is_Playing():
+            self.Voice.stop()
+        
+        # 이전 음악 재생
+        await self.Play(**Prev)
+        self.Loop, self.Loop_Queue = Loop, Queue_Loop
         return True
 
-    # 곡 일시 정지 스크립트
-    def pause(self):
-        if self.is_playing():
-            self.voice.pause()
+    # 음악 일시 정지 스크립트
+    def Pause(self):
+        if self.Is_Playing():
+            self.Voice.pause()
+ 
+    # 음악 재개 스크립트
+    def Resume(self):
+        if self.Is_Paused():
+            self.Voice.resume()
+ 
+    # 음악 건너뛰기 스크립트
+    def Skip(self):
+        if self.Is_Playing():
+            self.Voice.stop()
+ 
+    # 음악 정지 스크립트
+    async def Stop(self):
+        # 대기열 및 재생 기록 제거
+        self.Queue.clear()
+        self.History.clear()
+        self.Current = None
+ 
+        # 음성 연결 해제
+        if self.Voice:
+            self.Voice.stop()
 
-    # 곡 재개 스크립트
-    def resume(self):
-        if self.is_paused():
-            self.voice.resume()
+            if self.Voice.is_connected():
+                await self.Voice.disconnect()
 
-    # 스킵 스크립트
-    def skip(self):
-        if self.voice and self.is_playing():
-            self.voice.stop()
-
-    # 곡 정지 스크립트
-    async def stop(self):
-        self.queue.clear()
-        self.history.clear()
-        self.current = None
-
-        if not self.voice or not self.voice.is_connected():
-            return
-
-        if self.voice:
-            self.voice.stop()
-            await self.voice.disconnect()
-            self.voice = None
-
+        self.Voice = None
+ 
     # 볼륨 조절 스크립트 (최소 0% ~ 최대 500%)
-    def Set_VOL(self, volume: float):
-        self.volume = max(0.0, min(volume, 5.0))
-
-        if self.voice and self.voice.source:
-            self.voice.source.volume = self.volume
-
-    # 대기열에서 재생 스크립트
-    async def play_from_Queue(self, position: int):
-        if position < 1 or position > len(self.queue):
+    def Set_Volume(self, Volume: float):
+        self.Volume = max(0.0, min(Volume, 5.0))
+ 
+        if self.Voice and self.Voice.source:
+            self.Voice.source.volume = self.Volume
+ 
+    # 대기열에서 음악 재생 스크립트
+    async def Play_From_Queue(self, Position: int):
+        # 대기열 범위 확인
+        if not 1 <= Position <= len(self.Queue):
             return False
-
-        if self.current:
-            self.history.append(self.current)
+ 
+        # 현재 재생 중인 음악을 재생 기록에 추가
+        if self.Current:
+            self.History.append(self.Current)
         
-        if self.loop_queue and self.current:
-            self.queue.append(self.current)
-
-        song = self.queue.pop(position - 1)
-        self._manual_stop = True
-
-        if self.voice and self.is_playing():
-            self.voice.stop()
-
-        await self.play(song["url"], song["info"])
-        
-        if self.loop_queue and self.current:
-            self.queue.append(self.current)
-
+            # 대기열 반복 재생 설정 시 현재 음악 추가
+            if self.Loop_Queue:
+                self.Queue.append(self.Current)
+ 
+        # 대기열에서 음악 제거
+        Song = self.Queue.pop(Position - 1)
+        self.Manual_Stop = True
+ 
+        # 음악 정지
+        if self.Is_Playing():
+            self.Voice.stop()
+ 
+        # 음악 재생
+        await self.Play(**Song)
         return True
     
     # 대기열 셔플 스크립트
-    async def shuffle_Queue(self):
-        if not self.queue or len(self.queue) < 2:
+    async def Shuffle_Queue(self):
+        if not self.Queue or len(self.Queue) < 2:
             return False
-
-        random.shuffle(self.queue)
+ 
+        random.shuffle(self.Queue)
         return True
 
 # QueueView 클래스
 class QueueView(discord.ui.View):
-    def __init__(self, ctx, player, queue_page_func):
+    def __init__(self, ctx, Player, Queue_Page_Function):
         super().__init__(timeout=120)
-        self.ctx = ctx  # ctx
-        self.player = player    # 플레이어
-        self.queue_page = queue_page_func   # 대기열 페이지
-        self.page = 1   # 페이지
-        self.update_buttons()   # 버튼 업데이트 실행
+        self.ctx = ctx
+        self.Player = Player
+        self.Queue_Page = Queue_Page_Function
+        self.Page = 1
+        self.Update_Buttons()
+ 
+    # 버튼 생성
+    def Create_Button(self, Emoji, Enabled, Callback):
+        Button = discord.ui.Button(style=discord.ButtonStyle.secondary, emoji=Emoji, disabled=not Enabled)
+        Button.callback = Callback
+        return Button
 
     # 버튼 업데이트 스크립트
-    def update_buttons(self):
+    def Update_Buttons(self):
         self.clear_items()
+        Total_Pages = max(1, (len(self.Player.Queue) + 9) // 10)
 
-        total_pages = max(1, (len(self.player.queue) + 9) // 10)
-
-        self.add_item(self.Button("⏪", self.page > 1, self.first))
-        self.add_item(self.Button("⬅️", self.page > 1, self.prev))
-        self.add_item(self.Button("➡️", self.page < total_pages, self.next))
-        self.add_item(self.Button("⏩", self.page < total_pages, self.last))
-
+        Buttons = [
+            ("⏪", self.Page > 1, lambda i: self.Update_Page(i, 1)),
+            ("⬅️", self.Page > 1, lambda i: self.Update_Page(i, self.Page - 1)),
+            ("➡️", self.Page < Total_Pages, lambda i: self.Update_Page(i, self.Page + 1)),
+            ("⏩", self.Page < Total_Pages, lambda i: self.Update_Page(i, Total_Pages))
+        ]
+ 
+        for Emoji, Enabled, Callback in Buttons:
+            self.add_item(self.Create_Button(Emoji, Enabled, Callback))
+ 
     # 대기열 메세지 업데이트 스크립트
-    async def update(self, interaction):
-        embed, total = self.queue_page(self.ctx, self.player, self.page)
-        self.update_buttons()
-        await interaction.response.edit_message(embed=embed, view=self)
+    async def Update_Page(self, Interaction, Page):
+        self.Page = Page
+        embed, _ = self.Queue_Page(self.ctx, self.Player, self.Page)
 
-    # Button 클래스
-    class Button(discord.ui.Button):
-        def __init__(self, emoji, enabled, callback):
-            super().__init__(style=discord.ButtonStyle.secondary, emoji=emoji, disabled=not enabled)
-            self.cb = callback
-
-        async def callback(self, interaction):
-            await self.cb(interaction)
-
-    # 처음으로 버튼
-    async def first(self, interaction):
-        self.page = 1
-        await self.update(interaction)
-
-    # 이전으로 버튼
-    async def prev(self, interaction):
-        self.page -= 1
-        await self.update(interaction)
-
-    # 다음으로 버튼
-    async def next(self, interaction):
-        self.page += 1
-        await self.update(interaction)
-
-    # 맨 뒤로 버튼
-    async def last(self, interaction):
-        self.page = (len(self.player.queue) + 9) // 10
-        await self.update(interaction)
+        self.Update_Buttons()
+        await Interaction.response.edit_message(embed=embed, view=self)
 
 # VoteView 클래스
 class VoteView(discord.ui.View):
-    def __init__(self, ctx, player, required_votes, action, success_message = str):
+    def __init__(self, ctx, Player, Required_Votes, Action, Success_Message: str):
         super().__init__(timeout=30)
-        self.ctx = ctx  # ctx
-        self.player = player    # 플레이어
-        self.required_votes = required_votes    # 필요한 투표 수
-        self.votes = set()  # 투표 수
-        self.action = action
-        self.success_message = success_message
-
+        self.ctx = ctx
+        self.Player = Player
+        self.Required_Votes = Required_Votes
+        self.Votes = set()
+        self.Action = Action
+        self.Success_Message = Success_Message
+ 
     # 투표 스크립트
     @discord.ui.button(label="투표하기", style=discord.ButtonStyle.danger)
-    async def vote(self, button: discord.ui.Button, interaction: discord.Interaction):
-        if interaction.user.bot:
+    async def Vote(self, Button: discord.ui.Button, Interaction: discord.Interaction):
+        # 사용자 검증
+        if Interaction.user.bot:
             return
-        if interaction.user not in self.ctx.author.voice.channel.members:
-            return await interaction.response.send_message(embed=discord.Embed(description=":warning: 음성 채널에 있는 사용자만 투표할 수 있습니다."), ephemeral=True)
 
-        if interaction.user.id in self.votes:
-            return await interaction.response.send_message(embed=discord.Embed(description=":warning: 이미 투표하셨습니다."), ephemeral=True)
-
-        self.votes.add(interaction.user.id)
-
-        if len(self.votes) >= self.required_votes:
-            await self.action()
+        if Interaction.user not in self.ctx.author.voice.channel.members:
+            return await Interaction.response.send_message(embed=Error_Dialog_Embed("음성 채널에 있는 사용자만 투표할 수 있습니다."), ephemeral=True)
+ 
+        if Interaction.user.id in self.Votes:
+            return await Interaction.response.send_message(embed=Error_Dialog_Embed("이미 투표하셨습니다."), ephemeral=True)
+ 
+        self.Votes.add(Interaction.user.id)
+ 
+        # 투표 결과 처리
+        if len(self.Votes) >= self.Required_Votes:
+            await self.Action()
             self.stop()
-            return await interaction.response.edit_message(embed=discord.Embed(description=self.success_message), view=None)
-
-        await interaction.response.edit_message(embed=discord.Embed(description=f"투표가 진행 중입니다.\n"f"찬성: **{len(self.votes)} / {self.required_votes}**"), view=self)
+            return await Interaction.response.edit_message(embed=Success_Dialog_Embed(self.Success_Message.replace(":white_check_mark: ", "")), view=None)
+ 
+        await Interaction.response.edit_message(embed=discord.Embed(description=f"투표가 진행 중입니다.\n"f"찬성: **{len(self.Votes)} / {self.Required_Votes}**"), view=self)
 
 # PlaylistConfirmView 클래스
 class PlaylistConfirmView(discord.ui.View):
-    def __init__(self, author, playlist_url, player):
+    def __init__(self, Author, Playlist_URL, Player):
         super().__init__(timeout=30)
-        self.author = author    # 명령어 사용자
-        self.playlist_url = playlist_url    # 재생목록 URL
-        self.player = player    # 플레이어
-        self.value = None   # 값
+        self.Author = Author
+        self.Playlist_URL = Playlist_URL
+        self.Player = Player
+        self.Value = None
+ 
+    # 인터랙션 사용자 검증 스크립트
+    async def Interaction_Check(self, Interaction: discord.Interaction) -> bool:
+        if Interaction.user == self.Author:
+            return True
 
-    # 인터랙션 사용자 체크 스크립트
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user != self.author:
-            await interaction.response.send_message(":warning: 이 버튼은 명령어를 실행한 사용자만 사용할 수 있습니다.", ephemeral=True)
-            return False
-        return True
+        await Interaction.response.send_message(embed=Error_Dialog_Embed("이 버튼은 명령어를 실행한 사용자만 사용할 수 있습니다."), ephemeral=True)
+        return False
+ 
+    # 버튼 처리
+    async def Set_Value(self, Interaction, Value):
+        self.Value = Value
+        await Interaction.response.defer()
+        self.stop()
 
-    # 재생 목록 곡 추가 반환
+    # 재생 목록 음악 추가 반환
     @discord.ui.button(label="추가하기", style=discord.ButtonStyle.green)
-    async def confirm(self, button: discord.ui.Button, interaction: discord.Interaction):
-        self.value = True
-        await interaction.response.defer()
-        self.stop()
-
-    # 재생목록 곡 추가 취소 반환
+    async def Confirm(self, Button: discord.ui.Button, Interaction: discord.Interaction):
+        await self.Set_Value(Interaction, True)
+ 
+    # 재생목록 음악 추가 취소 반환
     @discord.ui.button(label="취소", style=discord.ButtonStyle.red)
-    async def cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
-        self.value = False
-        await interaction.response.defer()
-        self.stop()
-
+    async def Cancel(self, Button: discord.ui.Button, Interaction: discord.Interaction):
+        await self.Set_Value(Interaction, False)
+ 
     # 시간 초과 스크립트
-    async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
+    async def On_Timeout(self):
+        for Item in self.children:
+            Item.disabled = True
 
-# Music_Commands 클래스
-class Music_Commands(commands.Cog):
+# Music 클래스
+class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.FFMPEG_OPTIONS = {     # FFMPEG 옵션
+        self.FFmpeg_Options = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn'
             }
-        self.PYTUBEFIX_OPTIONS = {'only_audio': True, 'abr': '160kbps'}     # PYTUBEFIX 옵션
-        self.players = {}   # 길드 별 플레이어
-
+        self.Pytubefix_Options = {'only_audio': True, 'abr': '160kbps'}
+        self.Players = {}
+ 
     # 애플리케이션 자동 퇴장 스크립트
     @discord.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
-        if member.bot:
+    async def on_voice_state_update(self, Member, Before, After):
+        # 애플리케이션 제외
+        if Member.bot:
             return
-
-        guild = member.guild
-        player = self.players.get(guild.id)
-
-        if not player or not player.voice:
+ 
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(Member.guild.id)
+ 
+        # 플레이어 및 음성 채널 확인
+        if not Player or not Player.Voice or not Player.Voice.channel:
             return
+ 
+        # 멤버가 없다면 자동으로 퇴장
+        if not any(not M.bot for M in Player.Voice.channel.members):
+            await Player.Stop()
 
-        voice = player.voice
-        channel = voice.channel
-
-        if not channel:
-            return
-
-        peoples = [m for m in channel.members if not m.bot]
-
-        if len(peoples) == 0:
-            await player.stop()
-
-    # 곡 정보 빌드 스크립트
-    def Build_Song_Info(self, yt, ctx, queue_position=0):
+    # 음악 정보 생성 스크립트
+    def Build_Song_Info(self, YT, ctx, Queue_Position=0):
         return {
-            "title": yt.title,
-            "url": yt.watch_url,
-            "webpage_url": yt.watch_url,
-            "duration": yt.length,
-            "uploader": yt.author,
-            "thumbnail": yt.thumbnail_url,
-            "requester": ctx.author.display_name,
-            "text_channel": ctx.channel
+            "Title": YT.title,
+            "Url": YT.watch_url,
+            "Webpage_URL": YT.watch_url,
+            "Duration": YT.length,
+            "Uploader": YT.author,
+            "Thumbnail": YT.thumbnail_url,
+            "Requester": ctx.author.display_name,
+            "Text_Channel": ctx.channel
         }
 
-    # 곡 길이 포맷 스크립트
-    def Format_Duration(self, seconds: int) -> str:
-        if seconds is None:
+    # 음악 길이 포맷 스크립트
+    def Format_Duration(self, Seconds: int) -> str:
+        if Seconds is None:
             return "알 수 없음"
-        m, s = divmod(seconds, 60)
-        h, m = divmod(m, 60)
-        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+        M, S = divmod(Seconds, 60)
+        H, M = divmod(M, 60)
+
+        return f"{H}:{M:02d}:{S:02d}" if H else f"{M}:{S:02d}"
     
-    # 곡 Embed 빌드 스크립트
-    async def Build_Embed(self, song_info, ctx, description):
+    # 음악 Embed 생성 스크립트
+    async def Build_Embed(self, Song_Info, ctx, Description):
         embed = discord.Embed(
-            title=(f":musical_note: {song_info['title']}"),
-            description=description,
-            url=song_info.get('webpage_url'),
+            title=(f"🎵 {Song_Info['Title']}"),
+            description=Description,
+            url=Song_Info.get('Webpage_URL'),
             color=discord.Color.blue()
         )
-        embed.add_field(name="영상 길이", value=self.Format_Duration(song_info['duration']), inline=True)
-        embed.add_field(name="채널", value=song_info['uploader'], inline=True)
-        embed.set_thumbnail(url=song_info['thumbnail'])
-        embed.set_footer(text=f"요청자 : {song_info['requester']}")
+        embed.add_field(name="영상 길이", value=self.Format_Duration(Song_Info['Duration']), inline=True)
+        embed.add_field(name="채널", value=Song_Info['Uploader'], inline=True)
+        embed.set_thumbnail(url=Song_Info['Thumbnail'])
+        embed.set_footer(text=f"요청자 : {Song_Info['Requester']} | 일시: {Current_Time()}")
         return embed
     
-    # 곡 Embed 전송 스크립트
-    async def Send_embed_on_song_start(self, song_info):
-        channel = song_info.get("text_channel")
-        if not channel:
-            return
+    # 음악 재생 시작 Embed 전송 스크립트
+    async def Send_Embed(self, Song_Info):
+        if Channel := Song_Info.get("Text_Channel"):
+            await Channel.send(embed=await self.Build_Embed(Song_Info, None, f"**{Song_Info['Title']}** 음악을 재생하고 있습니다."))
 
-        embed = await self.Build_Embed(song_info, None, f"**{song_info['title']}** 음악을 재생하고 있습니다.")
-        await channel.send(embed=embed)
-
-    # 대기열 페이지 표시 스크립트
-    def Queue_Page(self, ctx, player: MusicPlayer, page_num: int, songs_per_page=10):
-        queue = player.queue
-        start_index = (page_num - 1) * songs_per_page
-        end_index = min(start_index + songs_per_page, len(queue))
-
-        if start_index >= len(queue):
+    # 대기열 페이지 생성 스크립트
+    def Queue_Page(self, ctx, Player: MusicPlayer, Page_Num: int, Songs_Per_Page=10):
+        Queue = Player.Queue
+        Start_Index = (Page_Num - 1) * Songs_Per_Page
+        End_Index = Start_Index + Songs_Per_Page
+ 
+        # 페이지 범위 검증
+        if Start_Index >= len(Queue):
             return None, None
+ 
+        # 대기열 Embed 생성
+        embed = discord.Embed(title="🎶 대기열을 표시합니다.", description="현재 대기열 목록:", color=discord.Color.blue())
+ 
+        # 현재 재생 중인 음악 검증
+        if Player.Current:
+            Info = Player.Current["Info"]
+            embed.add_field(name=f"현재 재생 중: {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}",inline=False)
+ 
+        # 음악 정보 추가
+        for I, Song in enumerate(Queue[Start_Index:End_Index], start=Start_Index + 1):
+            Info = Song["Info"]
+            embed.add_field(name=f"{I}. {Info['Title']}", value=f"길이: {self.Format_Duration(Info['Duration'])} | 요청자: {Info['Requester']}", inline=False)
+ 
+        # 전체 페이지 수 계산
+        Total_Pages = (len(Queue) + Songs_Per_Page - 1) // Songs_Per_Page
+        embed.set_footer(text=f"페이지 {Page_Num} / {Total_Pages}")
+ 
+        return embed, Total_Pages
 
-        embed = discord.Embed(title=":notes: 대기열을 표시합니다.", description="현재 대기열 목록:", color=discord.Color.blue())
-
-        if player.current:
-            info = player.current["info"]
-            embed.add_field(name=f"현재 재생 중: {info['title']}", value=f"길이: {self.Format_Duration(info['duration'])} | 요청자: {info['requester']}",inline=False)
-
-        for i in range(start_index, end_index):
-            info = queue[i]["info"]
-            embed.add_field(name=f"{i + 1}. {info['title']}", value=f"길이: {self.Format_Duration(info['duration'])} | 요청자: {info['requester']}", inline=False)
-
-        total_pages = (len(queue) + songs_per_page - 1) // songs_per_page
-        embed.set_footer(text=f"페이지 {page_num} / {total_pages}")
-
-        return embed, total_pages
-
-    # 재생 목록 곡 추가 스크립트
-    async def Add_Playlist_to_Queue(self, url, ctx, player):
-        playlist = Playlist(url)
-        videos = list(playlist.videos)
-
-        added = 0
-        rest_videos = videos[1:]
-
-        for yt in rest_videos:
-            stream = yt.streams.filter(**self.PYTUBEFIX_OPTIONS).order_by("abr").desc().first()
-
-            if stream is None:
+    # 재생 목록 음악 추가 스크립트
+    async def Add_Playlist_To_Queue(self, URL, ctx, Player):
+        Added = 0
+ 
+        # 재생 목록 객체 생성
+        for YT in list(Playlist(URL).videos)[1:]:
+            # 스트림 필터링
+            Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
+ 
+            if not Stream:
                 continue
-
-            info = self.Build_Song_Info(yt, ctx, queue_position=len(player.queue) + 1)
-
-            player.Add_to_Queue(stream.url, info)
-            added += 1
-
-        await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 재생목록에서 **{added}곡**을 대기열에 추가했습니다."))
+ 
+            # 대기열에 음악 추가
+            Player.Add_To_Queue(Stream.url, self.Build_Song_Info(YT, ctx))
+            Added += 1
+        
+        await ctx.respond(embed=Success_Dialog_Embed(f"재생 목록에서 음악 **{Added}개**를 대기열에 추가했습니다."))
 
     # 음성 채널 입장 스크립트
-    async def Ensure_VC(self, ctx, player):
+    async def Ensure_Voice_Channel(self, ctx, Player):
+        # 음성 채널 연결 검증
         if not ctx.author.voice:
-            await ctx.respond(embed=discord.Embed(description=":warning: 먼저 음성 채널에 연결해주세요."), ephemeral=True)
+            await ctx.respond(embed=Error_Dialog_Embed("먼저 음성 채널에 연결해주세요."), ephemeral=True)
             return False
-
-        channel = ctx.author.voice.channel
-
-        if ctx.voice_client and ctx.voice_client.channel != channel:
-            await ctx.respond(embed=discord.Embed(description=":warning: 애플리케이션이 같은 서버의 다른 음성 채널에서 재생 중입니다. 애플리케이션의 연결을 끊거나 기다린 후 다시 시도하세요."), ephemeral=True)
-            return False
-
-        if not ctx.voice_client:
-            player.voice = await channel.connect()
+ 
+        Channel = ctx.author.voice.channel
+ 
+        # 음성 채널 연결 상태 확인
+        if ctx.voice_client:
+            if ctx.voice_client.channel != Channel:
+                await ctx.respond(embed=Error_Dialog_Embed("애플리케이션이 같은 서버의 다른 음성 채널에서 재생 중입니다. 애플리케이션의 연결을 끊거나 기다린 후 다시 시도하세요."), ephemeral=True)
+                return False
+            Player.Voice = ctx.voice_client
         else:
-            player.voice = ctx.voice_client
-
+            Player.Voice = await Channel.connect()
+ 
         return True
 
-    Music = discord.SlashCommandGroup("음악")   # 음악 슬래쉬 커맨드 그룹
+    async def Control_Player_Action(self, ctx, Check, Action, Success_Message):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)     
+ 
+        # 음악 재생 상태 확인
+        if not Player or not Check(Player):
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
+ 
+        # 음악 제어
+        Action(Player)
+        return await ctx.respond(embed=Success_Dialog_Embed(Success_Message))
 
-    # 재생 명령어
-    @Music.command(name="재생", description="YouTube에서 음악을 찾아 재생합니다.", options=[discord.Option(str, name="제목", description="재생할 음악의 제목 또는 URL", required=True)])
-    async def play(self, ctx, *, url: str):
-        print(f"[Music | Command Event] 재생 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    async def Check_Queue(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 대기열 상태 확인
+        if not Player or not Player.Queue:
+            await ctx.respond(embed=Error_Dialog_Embed("대기열에 음악이 없습니다."), ephemeral=True)
+            return None
+ 
+        return Player
+
+    Music = discord.SlashCommandGroup("음악")
+
+    # /음악 재생 [제목]
+    @Music.command(name="재생", description="YouTube에서 음악을 찾아 재생합니다.")
+    async def Play_Music(self, ctx, URL: discord.Option(str, name="제목", description="재생할 음악의 제목 또는 URL", required=True)):
         await ctx.defer()
-
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player:
-            player = MusicPlayer(self.bot, self.FFMPEG_OPTIONS)
-            self.players[ctx.guild.id] = player
-
-        player.on_song_start = self.Send_embed_on_song_start
-
+ 
+        # 서버 별 플레이어 지정
+        Player = self.Players.setdefault(ctx.guild.id, MusicPlayer(self.bot, self.FFmpeg_Options))
+        Player.On_Song_Start = self.Send_Embed
+ 
         # 음성 채널 입장
-        if not await self.Ensure_VC(ctx, player):
+        if not await self.Ensure_Voice_Channel(ctx, Player):
             return
 
-        # 재생 목록 URL 체크
-        if Check_Playlist_URL(url):
-            playlist = Playlist(url)
-            videos = list(playlist.videos)
-            view = PlaylistConfirmView(ctx.author, url, player)
-
-            first_video = videos[0]
-            first_stream = first_video.streams.filter(**self.PYTUBEFIX_OPTIONS).order_by("abr").desc().first()
-            first_info = self.Build_Song_Info(first_video, ctx, queue_position=len(player.queue) + 1)
-
-            if player.is_playing():
-                player.Add_to_Queue(first_stream.url, first_info)
+        # 음악 재생 또는 대기열에 추가
+        async def Play_Or_Queue(Stream, Info):
+            if Player.Is_Playing():
+                Player.Add_To_Queue(Stream.url, Info)
+                Desc = f"**{Info['Title']}** 음악을 대기열에 추가했습니다."
+                Log = "대기열에 음악을 추가했습니다."
             else:
-                player.suppress_next_start_embed = True
-                await player.play(first_stream.url, first_info)
-                embed = await self.Build_Embed(first_info, ctx, description=f"**{first_info['title']}** 음악을 재생하고 있습니다.")
-                await ctx.respond(embed=embed)
+                Player.Suppress_Next_Start_Embed = True
+                await Player.Play(Stream.url, Info)
+                Desc = f"**{Info['Title']}** 음악을 재생하고 있습니다."
+                Log = "음악을 재생했습니다."
+            
+            Print_Log("Music", Log, ctx.guild.name, ctx.author.name)
+            await ctx.respond(embed=await self.Build_Embed(Info, ctx, Description=Desc))
+ 
+        try:
+            # 재생 목록 URL 검증
+            if Check_Playlist_URL(URL):
+                Videos = list(Playlist(URL).videos)
 
-            embed = discord.Embed(title="📃 재생목록 링크를 감지했습니다.", description="이 재생목록의 모든 곡을 대기열에 추가할까요?")
-            msg = await ctx.followup.send(embed=embed, view=view)
-            await view.wait()
+                # 재생 목록이 존재하는지 확인
+                if not Videos:
+                    return await ctx.respond(embed=Error_Dialog_Embed("재생 목록을 찾을 수 없습니다."))
+                
+                # 재생 목록 확인 View
+                View = PlaylistConfirmView(ctx.author, URL, Player)
+    
+                # 첫 번째 음악 정보 추출
+                First_Video = Videos[0]
+                Stream = First_Video.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
 
-            for item in view.children:
-                item.disabled = True
-            await msg.edit(view=view)
+                # 첫 번째 음악이 존재하는지 확인
+                if not Stream:
+                    return await ctx.followup.send(embed=Error_Dialog_Embed("재생 목록의 첫 번째 음악을 찾을 수 없습니다."))
 
-            if view.value is None:
-                return await ctx.followup.send(embed=discord.Embed(description=":warning: 시간이 초과되어 동작을 실행하지 않습니다."), ephemeral=True)
+                # 첫 번째 음악 재생
+                await Play_Or_Queue(Stream, self.Build_Song_Info(First_Video, ctx))
+                Message = await ctx.followup.send(embed=discord.Embed(title="📃 재생목록 링크를 감지했습니다.", description="이 재생목록의 모든 음악을 대기열에 추가할까요?"), view=View)
+                await View.wait()
 
-            if not view.value:
-                return await ctx.followup.send(embed=discord.Embed(description=":white_check_mark: 재생목록의 곡을 추가하지 않았습니다."), ephemeral=True)
+                for Item in View.children:
+                    Item.disabled = True
 
-            return await self.Add_Playlist_to_Queue(url, ctx, player)
+                await Message.edit(view=View)
 
-        # URL 체크
-        if Check_YT_URL(url):
-            yt = YouTube(url)
-        else:
-            search = Search(url)
-            if not search.results:return await ctx.respond(embed=discord.Embed(description=":warning: 검색 결과를 찾을 수 없습니다."), ephemeral=True)
-            yt = search.results[0]
+                # 시간 초과 처리
+                if View.Value is None:
+                    return await ctx.followup.send(embed=Error_Dialog_Embed("시간이 초과되어 동작을 실행하지 않습니다."))
+                
+                # 재생 목록 추가
+                if View.Value:
+                    await self.Add_Playlist_To_Queue(URL, ctx, Player)
+                else:
+                    await ctx.followup.send(embed=Success_Dialog_Embed("재생목록의 음악을 추가하지 않았습니다."))
+                
+                return
+ 
+            # YouTube URL 검증
+            YT = YouTube(URL) if Check_YouTube_URL(URL) else (Search(URL).results[0] if Search(URL).results else None)
+            
+            if not YT:
+                return await ctx.respond(embed=Error_Dialog_Embed("검색 결과를 찾을 수 없습니다."), ephemeral=True)
+    
+            # 음악 정보 저장
+            Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
+    
+            if not Stream:
+                return await ctx.respond(embed=Error_Dialog_Embed("음악을 찾을 수 없습니다."), ephemeral=True)
 
-        # 곡 정보 저장
-        stream = yt.streams.filter(**self.PYTUBEFIX_OPTIONS).order_by("abr").desc().first()
-        song_info = self.Build_Song_Info(yt, ctx, queue_position=len(player.queue) + 1)
+            # 음악 재생
+            await Play_Or_Queue(Stream, self.Build_Song_Info(YT, ctx))
+        except Exception as e:
+            await ctx.respond(embed=Error_Dialog_Embed(f"음악을 재생하는 중 오류가 발생했습니다. {(e)}"), ephemeral=True)
+            Print_Log("Music", "음악을 재생하는 중 오류가 발생했습니다.", ctx.guild.name, ctx.author.name, Extra=f"({e})")
 
-        # 곡 재생
-        if player.is_playing():
-            player.Add_to_Queue(stream.url, song_info)
-            embed = await self.Build_Embed(song_info, ctx, description=f"**{yt.title}** 음악을 대기열에 추가했습니다.")
-            print(f"[Music | Command Event] 대기열에 곡 추가 완료 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-            return await ctx.respond(embed=embed)
-        else:
-            player.suppress_next_start_embed = True
-            await player.play(stream.url, song_info)
-            embed = await self.Build_Embed(song_info, ctx, description=f"**{yt.title}** 음악을 재생하고 있습니다.")
-            return await ctx.respond(embed=embed)
-
-    # 검색 명령어
-    @Music.command(name="검색", description="YouTube에서 음악을 지정한 개수만큼 검색합니다.", options=[
-        discord.Option(str, name="제목", description="검색할 음악의 제목", required=True),
-        discord.Option(int, name="개수", description="검색할 개수 (1 ~ 10, 기본값: 5, 선택)", required=False, min_value=1, max_value=10, default=5)])
-    async def search(self, ctx, *, query: str, index: int):
-        print(f"[Music | Command Event] 검색 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    # /음악 검색 [제목] [개수]
+    @Music.command(name="검색", description="YouTube에서 음악을 지정한 개수만큼 검색합니다.")
+    async def Search_Music(self, ctx, Query: discord.Option(str, name="제목", description="검색할 음악의 제목", required=True),
+        Index: discord.Option(int, name="개수", description="검색할 개수 (1 ~ 10, 선택)", required=False, min_value=1, max_value=10, default=3)):
         await ctx.defer()
         
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-        
-        if not player:
-            player = MusicPlayer(self.bot, self.FFMPEG_OPTIONS)
-            self.players[ctx.guild.id] = player
-
-        player.on_song_start = self.Send_embed_on_song_start
-
+        # 서버 별 플레이어 지정
+        Player = self.Players.setdefault(ctx.guild.id, MusicPlayer(self.bot, self.FFmpeg_Options))
+        Player.On_Song_Start = self.Send_Embed
+ 
         # 음성 채널 입장
-        if not await self.Ensure_VC(ctx, player):
+        if not await self.Ensure_Voice_Channel(ctx, Player):
             return
         
         # 검색
-        search = Search(query)
-        results = search.results[:index]
-
-        if not search.results:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 검색 결과가 없습니다."), ephemeral=True)
-
+        Search_Obj = Search(Query)
+        Results = Search_Obj.results[:Index]
+ 
+        # 검색 결과 확인
+        if not Results:
+            return await ctx.respond(embed=Error_Dialog_Embed("검색 결과가 없습니다."), ephemeral=True)
+ 
         # 검색 결과 표시
-        embed = discord.Embed(title=f":notes: '{query}'에 대한 검색 결과", color=discord.Color.blue())
-
-        for i, yt in enumerate(results, start=1):
-            duration = self.Format_Duration(yt.length) if yt.length else "알 수 없음"
-            embed.add_field(name=f"{i}. {yt.title}", value=f"채널: {yt.author}\n길이: {duration}", inline=False)
-
-        await ctx.respond(content=":white_check_mark: 30초 내에 번호를 입력하여 해당 음악을 재생할 수 있습니다.", embed=embed)
-
-        def check(m):
-            return (m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit() and 1 <= int(m.content) <= len(results))
-
-        # 곡 재생
+        Embed = discord.Embed(title=f":notes: '{Query}'에 대한 검색 결과", color=discord.Color.blue())
+ 
+        for I, YT in enumerate(Results, start=1):
+            Embed.add_field(name=f"{I}. {YT.title}", value=f"채널: {YT.author}\n길이: {self.Format_Duration(YT.length) if YT.length else "알 수 없음"}", inline=False)
+ 
+        await ctx.respond(content=":white_check_mark: 30초 내에 번호를 입력하여 해당 음악을 재생할 수 있습니다.", embed=Embed)
+        Print_Log("Music", "음악을 검색했습니다.", ctx.guild.name, ctx.author.name, Extra=f"제목: {Query}")
+ 
+        # 음악 재생
         try:
-            msg = await self.bot.wait_for("message", check=check, timeout=30)
-            index = int(msg.content) - 1
-            yt = results[index]
-            stream = yt.streams.filter(**self.PYTUBEFIX_OPTIONS).order_by("abr").desc().first()
-            song_info = self.Build_Song_Info(yt, ctx, queue_position=len(player.queue) + 1)
-
-            if player.is_playing():
-                player.Add_to_Queue(stream.url, song_info)
-                embed = await self.Build_Embed(song_info, ctx, description=f"**{yt.title}** 음악을 대기열에 추가했습니다.")
-                return await ctx.respond(embed=embed)
+            Message = await self.bot.wait_for("message", timeout=30, check=lambda M: (M.author == ctx.author
+                                                                            and M.channel == ctx.channel
+                                                                            and M.content.isdigit()
+                                                                            and 1 <= int(M.content) <= len(Results)))
+            YT = Results[int(Message.content) - 1]
+            Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
+            Song_Info = self.Build_Song_Info(YT, ctx)
+ 
+            # 음악 재생 또는 대기열에 추가
+            if Player.Is_Playing():
+                Player.Add_To_Queue(Stream.url, Song_Info)
+                Description = f"**{YT.title}** 음악을 대기열에 추가했습니다."
             else:
-                player.suppress_next_start_embed = True
-                await player.play(stream.url, song_info)
-                embed = await self.Build_Embed(song_info, ctx, description=f"**{yt.title}** 음악을 재생하고 있습니다.")
-                return await ctx.respond(embed=embed)
+                Player.Suppress_Next_Start_Embed = True
+                await Player.Play(Stream.url, Song_Info)
+                Description = f"**{YT.title}** 음악을 재생하고 있습니다."
 
+            Embed = await self.Build_Embed(Song_Info, ctx, Description=Description)
+            return await ctx.respond(embed=Embed)
         # 시간 초과 시 스크립트
         except asyncio.TimeoutError:
-            await ctx.send(embed=discord.Embed(description=":warning: 시간이 초과되어 동작을 실행하지 않습니다."))
+            await ctx.send(embed=Error_Dialog_Embed("시간이 초과되어 동작을 실행하지 않습니다."))
 
-    # 스킵 명령어
-    @Music.command(name="스킵", description="현재 재생 중인 곡을 건너 뜁니다.")
-    async def skip(self, ctx):
-        print(f"[Music | Command Event] 스킵 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.is_playing():
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
-
-        if not player.queue and not player.loop:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 다음 곡을 찾을 수 없습니다."), ephemeral=True)
-
-        voice = ctx.voice_client
-        if not voice or not voice.channel:
-            return
-
-        members = [m for m in voice.channel.members if not m.bot]   # 음성 채널 사용자 수 감지 (애플리케이션 제외)
-
+    # /음악 스킵
+    @Music.command(name="스킵", description="현재 재생 중인 음악을 건너 뜁니다.")
+    async def Skip_Music(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 재생 상태 확인
+        if not Player or not Player.Is_Playing():
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
+ 
+        # 다음 곡이 존재하는지 확인
+        if not Player.Queue and not Player.Loop:
+            return await ctx.respond(embed=Error_Dialog_Embed("다음 곡을 찾을 수 없습니다."), ephemeral=True)
+ 
+        # 음성 채널 사용자 수 감지 (애플리케이션 제외)
+        Members = [M for M in ctx.voice_client.channel.members if not M.bot]
+ 
         # 사용자가 1명이거나 관리자이면 즉시 스킵
-        if len(members) <= 1 or ctx.author.guild_permissions.administrator:
-            player.skip()
-            return await ctx.respond(embed=discord.Embed(description=":white_check_mark: 재생 중인 음악을 건너뛰었습니다."))
-
-        required_votes = (len(members) // 2) + 1    # 필요한 투표 수 계산
-
+        if len(Members) <= 1 or ctx.author.guild_permissions.administrator:
+            Player.Skip()
+            return await ctx.respond(embed=Success_Dialog_Embed("재생 중인 음악을 건너뛰었습니다."))
+ 
+        # 필요한 투표 수 계산
+        Required_Votes = (len(Members) // 2) + 1
+ 
         # 스킵 투표 진행
-        embed = discord.Embed(
+        await ctx.respond(embed=discord.Embed(
             title=":white_check_mark: 이 음악을 건너 뛸까요?",
             description=(
                 f"음성 채널에 사용자가 2명 이상이므로 투표를 진행합니다.\n\n"
-                f"필요 찬성 수: **{required_votes}**\n"
-                f"투표 시간: **30초**"))
-        view = VoteView(ctx, player, required_votes, action=player.skip, success_message=":white_check_mark: 투표가 통과되어 재생 중인 음악을 건너뛰었습니다.")
-        await ctx.respond(embed=embed, view=view)
+                f"필요 찬성 수: **{Required_Votes}**\n"
+                f"투표 시간: **30초**")), View = VoteView(ctx, Player, Required_Votes, Action=Player.Skip,
+                Success_Message=":white_check_mark: 투표가 통과되어 재생 중인 음악을 건너뛰었습니다."))
 
-    # 곡 정지 명령어
+        Print_Log("Music", "음악을 스킵했습니다.", ctx.guild.name, ctx.author.name)
+    
+    # /음악 정지
     @Music.command(name="정지", description="재생 중인 음악을 정지하고 대기열을 초기화합니다.")
-    async def stop(self, ctx):
-        print(f"[Music | Command Event] 곡 정지 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.voice:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
+    async def Stop_Music(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 재생 상태 확인
+        if not Player or not Player.Voice:
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
         
-        await player.stop()
-        self.players.pop(ctx.guild.id, None)
+        # 재생 중인 음악 정지
+        await Player.Stop()
+        self.Players.pop(ctx.guild.id, None)
+ 
+        await ctx.respond(embed=Success_Dialog_Embed("재생 중인 음악을 정지하고 대기열을 초기화했습니다."))
+        Print_Log("Music", "음악을 정지했습니다.", ctx.guild.name, ctx.author.name)
 
-        await ctx.respond(embed=discord.Embed(description=":white_check_mark: 재생 중인 음악을 정지하고 대기열을 초기화했습니다."))
-
-    # 곡 일시 정지 명령어
+    # /음악 일시정지
     @Music.command(name="일시정지", description="재생 중인 음악을 일시정지합니다.")
-    async def pause(self, ctx):
-        print(f"[Music | Command Event] 곡 일시 정지 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.is_playing():
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
-
-        player.pause()
-
-        await ctx.respond(embed=discord.Embed(description=":white_check_mark: 재생 중인 음악을 일시정지했습니다."))
+    async def Pause_Music(self, ctx):
+        await self.Control_Player_Action(ctx, lambda P: P.Is_Playing(), lambda P: P.Pause(), "재생 중인 음악을 일시정지했습니다.")
+        Print_Log("Music", "음악을 일시정지했습니다.", ctx.guild.name, ctx.author.name)
         
-    # 곡 재개 명령어
+    # /음악 재개
     @Music.command(name="재개", description="일시 정지한 음악을 다시 재생합니다.")
-    async def resume(self, ctx):
-        print(f"[Music | Command Event] 곡 재개 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
+    async def Resume_Music(self, ctx):
+        await self.Control_Player_Action(ctx, lambda P: P.Is_Paused(), lambda P: P.Resume(), "일시 정지한 음악을 다시 재생했습니다.")
+        Print_Log("Music", "음악을 재개했습니다.", ctx.guild.name, ctx.author.name)
 
-        if not player or not player.is_paused():
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
+    # /음악 반복
+    @Music.command(name="반복", description="현재 음악을 반복할 옵션을 선택합니다.")
+    async def Loop_Music(self, ctx, Mode: discord.Option(str, name="모드", description="반복 모드", choices=["대기열", "단일", "끄기"], required=True)):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 재생 상태 확인
+        if not Player or not Player.Is_Playing():
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
+ 
+        # 반복 모드 정의
+        Modes = {
+            "대기열": (True, False, "반복 모드를 **대기열 반복**으로 설정했습니다."),
+            "단일": (False, True, "반복 모드를 **단일 반복**으로 설정했습니다."),
+            "끄기": (False, False, "반복 모드를 **해제**했습니다.")
+        }
 
-        player.resume()
+        # 반복 모드 설정
+        Player.Loop, Player.Loop_Queue, Message = Modes[Mode]
+        await ctx.respond(embed=Success_Dialog_Embed(Message))
+        Print_Log("Music", "음악 반복 모드를 설정했습니다.", ctx.guild.name, ctx.author.name, Extra=f"모드: {Mode}")
 
-        await ctx.respond(embed=discord.Embed(description=":white_check_mark: 일시 정지한 음악을 다시 재생했습니다."))
-
-    # 곡 반복 명령어
-    @Music.command(name="반복", description="현재 음악을 반복할 옵션을 선택합니다.", options=[discord.Option(str, name="모드", description="반복 모드", choices=["대기열", "단일", "끄기"], required=True)])
-    async def loop(self, ctx, mode: str):
-        print(f"[Music | Command Event] 곡 반복 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.is_playing():
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
-
-        # 모드가 대기열 반복이라면
-        if mode == "대기열":
-            player.loop_queue = True
-            player.loop = False
-
-            await ctx.respond(embed=discord.Embed(description=":white_check_mark: 반복 모드를 **대기열 반복**으로 설정했습니다."))
-
-        # 모드가 단일 반복이라면
-        elif mode == "단일":
-            player.loop = True
-            player.loop_queue = False
-
-            await ctx.respond(embed=discord.Embed(description=":white_check_mark: 반복 모드를 **단일 반복**으로 설정했습니다."))
-
-        # 모드가 끄기라면
-        elif mode == "끄기":
-            player.loop = False
-            player.loop_queue = False
-
-            await ctx.respond(embed=discord.Embed(description=":white_check_mark: 반복 모드를 **해제**했습니다."))
-
-    # 이전 곡 재생 명령어
+    # /음악 이전곡
     @Music.command(name="이전곡", description="이전 곡을 다시 재생합니다.")
-    async def previous(self, ctx):
-        print(f"[Music | Command Event] 이전 곡 재생 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.current:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
-
-        if not player.history:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 이전 곡을 찾을 수 없습니다."), ephemeral=True)
+    async def Previous_Music(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 재생 상태 확인
+        if not Player or not Player.Current:
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
+ 
+        # 이전 곡이 존재하는지 확인
+        if not Player.History:
+            return await ctx.respond(embed=Error_Dialog_Embed("이전 곡을 찾을 수 없습니다."), ephemeral=True)
         
-        prev_info = player.history[-1]["info"]
-        prev_title = prev_info["title"]
+        # 이전 곡 정보 가져오기
+        Prev_Title = Player.History[-1]["Info"]["Title"]
+ 
+        # 이전 곡 재생 함수
+        async def Play_Previous():
+            Player.Suppress_Next_Start_Embed = True
+            await Player.Play_Previous()
 
-        voice = ctx.voice_client
-        if not voice or not voice.channel:
-            return
-
-        members = [m for m in voice.channel.members if not m.bot]   # 음성 채널 사용자 수 감지 (애플리케이션 제외)
-
+        # 음성 채널 사용자 수 계산 (애플리케이션 제외)
+        Members = [M for M in ctx.voice_client.channel.members if not M.bot]
+ 
         # 사용자가 1명이거나 관리자이면 즉시 이전 곡 재생
-        if len(members) <= 1 or ctx.author.guild_permissions.administrator:
-            player.suppress_next_start_embed = True
-            await player.play_previous()
-            return await ctx.respond(embed=discord.Embed(description=f":white_check_mark: **{prev_title}** 음악을 재생합니다."))
-
-        required_votes = (len(members) // 2) + 1    # 필요한 투표 수 계산
-
+        if len(Members) <= 1 or ctx.author.guild_permissions.administrator:
+            await Play_Previous()
+            return await ctx.respond(embed=Success_Dialog_Embed(f"**{Prev_Title}** 음악을 재생합니다."))
+ 
+        # 필요한 투표 수 계산
+        Required_Votes = (len(Members) // 2) + 1
+ 
         # 이전 곡 재생 투표 진행
-        embed = discord.Embed(
+        await ctx.respond(embed=discord.Embed(
             title=":white_check_mark: 이전 곡을 재생할까요?",
             description=(
                 f"음성 채널에 사용자가 2명 이상이므로 투표를 진행합니다.\n\n"
-                f"필요 찬성 수: **{required_votes}**\n"
-                f"투표 시간: **30초**"))
-        
-        async def action():
-            player.suppress_next_start_embed = True
-            player.play_previous
-        view = VoteView(ctx, player, required_votes, action=action, success_message=f":white_check_mark: 투표가 통과되어 **{prev_title}** 음악을 재생합니다.")
-        await ctx.respond(embed=embed, view=view)
-
-    # 곡 정보 명령어
+                f"필요 찬성 수: **{Required_Votes}**\n"
+                f"투표 시간: **30초**")), View=VoteView(ctx, Player, Required_Votes, Action=Play_Previous,
+                Success_Message=f":white_check_mark: 투표가 통과되어 **{Prev_Title}** 음악을 재생합니다."))
+ 
+    # /음악 정보
     @Music.command(name="정보", description="현재 재생 중인 음악의 정보를 표시합니다.")
-    async def now(self, ctx):
-        print(f"[Music | Command Event] 곡 정보 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.is_playing():
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
-        else:
-            song = player.current["info"]
-            embed = await self.Build_Embed(song, ctx, f"**{song['title']}** 음악을 재생하고 있습니다.")
-            await ctx.respond(embed=embed)
-
-    # 볼륨 조절 명령어
-    @Music.command(name="볼륨", description="음악 볼륨을 조절합니다.", options=[discord.Option(int, name="크기", description="볼륨 크기 (0 ~ 500)", required=True)])
-    async def volume(self, ctx, value: int):
-        print(f"[Music | Command Event] 볼륨 조절 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.voice:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 재생 중인 음악이 없습니다."), ephemeral=True)
-
-        if value < 0 or value > 500:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 볼륨은 0 이상 500 이하의 정수여야 합니다."), ephemeral=True)
-
-        player.Set_VOL(value / 100)     # 볼륨 조절
-        await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 애플리케이션의 볼륨을 **{value}%** 로 설정했습니다."))
-
-    Queue = Music.create_subgroup("대기열", "대기열 관련 명령어입니다.")    # 대기열 슬래쉬 커맨드 그룹
-
-    # 대기열 표시 명령어
-    @Queue.command(name="목록", description="대기열을 표시합니다.")
-    async def queue(self, ctx):
-        print(f"[Music | Command Event] 대기열 표시 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.queue:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 대기열에 음악이 존재하지 않습니다."), ephemeral=True)
-
-        embed, _ = self.Queue_Page(ctx, player, 1)
-        view = QueueView(ctx, player, self.Queue_Page)
-
-        await ctx.respond(embed=embed, view=view)
-
-    # 대기열 초기화 명령어
-    @Queue.command(name="초기화", description="대기열을 초기화합니다.")
-    async def queue_clear(self, ctx):
-        print(f"[Music | Command Event] 대기열 초기화 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.queue:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 대기열에 음악이 존재하지 않습니다."), ephemeral=True)
-
-        cleared_count = len(player.queue)   # 삭제된 곡 수
-        player.queue.clear()
-
-        await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 대기열을 초기화했습니다. (삭제된 곡 수: {cleared_count}개)"))
-
-    # 대기열 곡 삭제 명령어
-    @Queue.command(name="삭제", description="대기열에서 음악을 삭제합니다.", options=[discord.Option(int, name="num", description="삭제할 음악의 num", required=True)])
-    async def queue_delete(self, ctx, position: int):
-        print(f"[Music | Command Event] 대기열 곡 삭제 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.queue:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 대기열에 음악이 존재하지 않습니다."), ephemeral=True)
-
-        if position < 1 or position > len(player.queue):
-            return await ctx.respond(embed=discord.Embed(description=f":warning: 올바른 번호를 입력하세요. (1 ~ {len(player.queue)})"), ephemeral=True)
-
-        removed = player.queue.pop(position - 1)
-        title = removed["info"]["title"]
-
-        await ctx.respond(embed=discord.Embed(description=f":white_check_mark: **{title}** 음악을 대기열에서 삭제했습니다."))
-
-    # 대기열에서 곡 재생 명령어
-    @Queue.command(name="재생", description="대기열에서 원하는 번호의 곡을 바로 재생합니다.", options=[discord.Option(int, name="번호", description="재생할 곡의 번호", required=True)])
-    async def queue_play(self, ctx, num: int):
-        print(f"[Music | Command Event] 대기열에서 곡 재생 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
-
-        if not player or not player.queue:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 대기열에 음악이 존재하지 않습니다."), ephemeral=True)
-
-        if num < 1 or num > len(player.queue):
-            return await ctx.respond(embed=discord.Embed(description=f":warning: 올바른 번호를 입력하세요. (1 ~ {len(player.queue)})"), ephemeral=True)
-
+    async def Now_Music(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 재생 상태 확인
+        if not Player or not Player.Is_Playing():
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
         
-        voice = ctx.voice_client
-        if not voice or not voice.channel:
-            return
+        # 현재 재생 중인 음악 정보 가져오기
+        Song = Player.Current["Info"]
+        await ctx.respond(embed=await self.Build_Embed(Song, ctx, f"**{Song['Title']}** 음악을 재생하고 있습니다."))
+        Print_Log("Music", "음악 정보를 표시했습니다.", ctx.guild.name, ctx.author.name)
+ 
+    # /음악 볼륨
+    @Music.command(name="볼륨", description="음악의 볼륨을 조절합니다.")
+    async def Set_Volume_Music(self, ctx, Value: discord.Option(int, name="크기", description="볼륨 크기 (0 ~ 500)", required=True)):
+        # 서버 별 플레이어 지정
+        Player = self.Players.get(ctx.guild.id)
+ 
+        # 재생 상태 확인
+        if not Player or not Player.Voice:
+            return await ctx.respond(embed=Error_Dialog_Embed("재생 중인 음악이 없습니다."), ephemeral=True)
+ 
+        # 볼륨 범위 확인
+        if not 0 <= Value <= 500:
+            return await ctx.respond(embed=Error_Dialog_Embed("볼륨은 0 이상 500 이하의 정수여야 합니다."), ephemeral=True)
+ 
+        # 볼륨 조절
+        Player.Set_Volume(Value / 100)
+        await ctx.respond(embed=Success_Dialog_Embed(f"애플리케이션의 볼륨을 **{Value}%** 로 설정했습니다."))
+        Print_Log("Music", "음악의 볼륨을 조절했습니다.", ctx.guild.name, ctx.author.name, Extra=f"볼륨: {Value}%")
 
-        members = [m for m in voice.channel.members if not m.bot]   # 음성 채널 사용자 수 감지 (애플리케이션 제외)
-        queue_item = player.queue[num - 1]
-        title = queue_item["info"]["title"]    # 곡 이름 불러오기
+    Queue = Music.create_subgroup("대기열", "대기열 관련 명령어입니다.")
+
+    # /음악 대기열 목록
+    @Queue.command(name="목록", description="대기열을 표시합니다.")
+    async def Queue_List(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = await self.Check_Queue(ctx)
+ 
+        # 재생 상태 확인
+        if not Player:
+            return
+ 
+        # 대기열 페이지 생성 및 표시
+        Embed, _ = self.Queue_Page(ctx, Player, 1)
+        await ctx.respond(embed=Embed, view=QueueView(ctx, Player, self.Queue_Page))
+        Print_Log("Music", "대기열을 표시했습니다.", ctx.guild.name, ctx.author.name)
+
+    # /음악 대기열 초기화
+    @Queue.command(name="초기화", description="대기열을 초기화합니다.")
+    async def Queue_Clear(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = await self.Check_Queue(ctx)
+ 
+        # 재생 상태 확인
+        if not Player:
+            return
+ 
+        # 삭제된 곡 수 계산
+        Cleared_Count = len(Player.Queue)
+
+        # 대기열 초기화
+        Player.Queue.clear()
+        await ctx.respond(embed=Success_Dialog_Embed(f"대기열을 초기화했습니다. (삭제된 음악 개수: {Cleared_Count}개)"))
+        Print_Log("Music", "대기열을 초기화했습니다.", ctx.guild.name, ctx.author.name, Extra=f"삭제된 음악 개수: {Cleared_Count}개")
+
+    # /음악 대기열 삭제 [번호]
+    @Queue.command(name="삭제", description="대기열에서 음악을 삭제합니다.")
+    async def Queue_Delete(self, ctx, Position: discord.Option(int, name="번호", description="삭제할 음악의 번호", required=True)):
+        # 서버 별 플레이어 지정
+        Player = await self.Check_Queue(ctx)
+ 
+        # 재생 상태 확인
+        if not Player:
+            return
+ 
+        # 대기열 범위 확인
+        if not 1 <= Position <= len(Player.Queue):
+            return await ctx.respond(embed=Error_Dialog_Embed(f"올바른 번호를 입력하세요. (1 ~ {len(Player.Queue)})"), ephemeral=True)
+ 
+        # 대기열에서 음악 삭제
+        Removed = Player.Queue.pop(Position - 1)
+        await ctx.respond(embed=Success_Dialog_Embed(f"**{Removed['Info']['Title']}** 음악을 대기열에서 삭제했습니다."))
+        Print_Log("Music", "대기열에서 음악을 삭제했습니다.", ctx.guild.name, ctx.author.name)
+
+    # /음악 대기열 재생 [번호]
+    @Queue.command(name="재생", description="대기열에서 원하는 번호의 음악을 바로 재생합니다.")
+    async def Queue_Play(self, ctx, Num: discord.Option(int, name="번호", description="재생할 음악의 번호", required=True)):
+        # 서버 별 플레이어 지정
+        Player = await self.Check_Queue(ctx)
+ 
+        # 재생 상태 확인
+        if not Player:
+            return
+ 
+        # 대기열 범위 확인
+        if not 1 <= Num <= len(Player.Queue):
+            return await ctx.respond(embed=Error_Dialog_Embed(f"올바른 번호를 입력하세요. (1 ~ {len(Player.Queue)})"), ephemeral=True)
+
+        # 대기열에서 음악 정보 가져오기
+        Song = Player.Queue[Num - 1]
+        Title = Song["Info"]["Title"]
+
+        # 음악 재생 함수
+        async def Play():
+            Player.Suppress_Next_Start_Embed = True
+            return await Player.Play_From_Queue(Num)
+
+        # 음성 채널 사용자 수 감지 (애플리케이션 제외)
+        Voice = ctx.voice_client
+        Members = [M for M in Voice.channel.members if not M.bot] if Voice else []
 
         # 사용자가 1명이거나 관리자이면 즉시 곡 재생
-        if len(members) <= 1 or ctx.author.guild_permissions.administrator:
-            success = await player.play_from_Queue(num)
+        if len(Members) <= 1 or ctx.author.guild_permissions.administrator:
+            if not await Play():
+                return await ctx.respond(embed=Error_Dialog_Embed("음악을 재생하지 못했습니다."), ephemeral=True)
 
-            if not success:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 음악을 재생하지 못했습니다."), ephemeral=True)
-            
-            player.suppress_next_start_embed = True
-            return await ctx.respond(embed=discord.Embed(description=f":white_check_mark: **{title}** 음악을 재생합니다."))
+            return await ctx.respond(embed=Success_Dialog_Embed(f"**{Title}** 음악을 재생합니다."))
 
-        required_votes = (len(members) // 2) + 1    # 필요한 투표 수 계산
+        # 필요한 투표 수 계산
+        Required_Votes = (len(Members) // 2) + 1
 
-        # 곡 재생 투표 진행
-        embed = discord.Embed(
-            title=f":white_check_mark: **{title}** 음악을 재생할까요?",
+        # 투표 진행
+        await ctx.respond(embed=discord.Embed(
+            title=f":white_check_mark: **{Title}** 음악을 재생할까요?",
             description=(
                 f"음성 채널에 사용자가 2명 이상이므로 투표를 진행합니다.\n\n"
-                f"필요 찬성 수: **{required_votes}**\n"
-                f"투표 시간: **30초**"))
-        
-        async def action():
-            player.suppress_next_start_embed = True
-            await player.play_from_Queue(num)
+                f"필요 찬성 수: **{Required_Votes}**\n"
+                f"투표 시간: **30초**")), view = VoteView(ctx, Player, Required_Votes, Action=Play,
+                Success_Message=f":white_check_mark: 투표가 통과되어 **{Title}** 음악을 재생합니다."))
 
-        view = VoteView(ctx, player, required_votes, action=action, success_message=f":white_check_mark: 투표가 통과되어 **{title}** 음악을 재생합니다.")
-        await ctx.respond(embed=embed, view=view)
+        Print_Log("Music", "대기열에서 음악을 재생했습니다.", ctx.guild.name, ctx.author.name)
 
-    # 대기열 셔플 명령어
+    # /음악 대기열 셔플
     @Queue.command(name="셔플", description="대기열을 셔플합니다.")
-    async def shuffle(self, ctx):
-        print(f"[Music | Command Event] 대기열 셔플 명령어 사용 (서버: {ctx.guild.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        player = self.players.get(ctx.guild.id)     # 길드 별 플레이어 지정
+    async def Queue_Shuffle(self, ctx):
+        # 서버 별 플레이어 지정
+        Player = await self.Check_Queue(ctx)
+ 
+        # 재생 상태 확인
+        if not Player:
+            return
 
-        if not player or not player.queue:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 대기열에 음악이 존재하지 않습니다."), ephemeral=True)
+        # 대기열 셔플
+        if not await Player.Shuffle_Queue():
+            return await ctx.respond(embed=Error_Dialog_Embed("대기열에 2개 이상의 곡을 추가해 주세요."), ephemeral=True)
 
-        success = await player.shuffle_Queue()
-
-        if not success:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 대기열에 2개 이상의 곡을 추가해 주세요."), ephemeral=True)
-
-        await ctx.respond(embed=discord.Embed(description=":white_check_mark: 대기열을 셔플했습니다."))
+        await ctx.respond(embed=Success_Dialog_Embed("대기열을 셔플했습니다."))
+        Print_Log("Music", "대기열을 셔플했습니다.", ctx.guild.name, ctx.author.name)
 
 def setup(bot):
-    bot.add_cog(Music_Commands(bot))
+    bot.add_cog(Music(bot))

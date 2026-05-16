@@ -1,254 +1,348 @@
-import discord
-import datetime
-import os
-import json
+import discord, os, json, datetime
 from discord.ext import commands
-from discord.ui import View, Button
+from Resources import Current_Time, Error_Dialog_Embed, Success_Dialog_Embed, Print_Log, Load_Data, Save_Data, Parse_Duration, Button_Interaction
 
-class settings(commands.Cog):
+# 경고 전체 초기화 확인 뷰
+class Reset_Confirm_View(discord.ui.View):
+    def __init__(self, author):
+        super().__init__(timeout=30)
+        self.Author = author
+        self.Value = None
+
+    @discord.ui.button(label="예, 진행합니다", style=discord.ButtonStyle.red)
+    async def Confirm(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await Button_Interaction(self, interaction, True)
+
+    @discord.ui.button(label="아니요", style=discord.ButtonStyle.green)
+    async def Cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await Button_Interaction(self, interaction, False)
+
+# 인증 버튼 뷰 클래스
+class Verify_View(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="인증하기", style=discord.ButtonStyle.green, emoji="✅", custom_id="member_verify")
+    async def Verify(self, button: discord.ui.Button, interaction: discord.Interaction):
+        Settings = Load_Data("Datas/Settings_Data.json")
+        Role_ID = Settings.get(str(interaction.guild.id), {}).get("Verify", {}).get("Role_ID")
+        
+        if not Role_ID:
+            return await interaction.response.send_message(embed=Error_Dialog_Embed("이 서버에 설정된 인증 역할이 없습니다. 서버 소유자 또는 관리자에게 문의해주세요."), ephemeral=True)
+        
+        Role = interaction.guild.get_role(Role_ID)
+        if not Role:
+            return await interaction.response.send_message(embed=Error_Dialog_Embed("설정된 역할을 찾을 수 없습니다. 서버 소유자 또는 관리자에게 문의해주세요."), ephemeral=True)
+            
+        if Role in interaction.user.roles:
+            return await interaction.response.send_message(embed=Success_Dialog_Embed("이미 인증된 상태입니다."), ephemeral=True)
+            
+        try:
+            await interaction.user.add_roles(Role, reason="멤버 인증")
+            await interaction.response.send_message(embed=Success_Dialog_Embed(f"**{Role.name}** 역할을 부여했습니다."), ephemeral=True)
+            Print_Log("Settings", "멤버를 인증했습니다.", interaction.guild.name, interaction.user.name)
+        except Exception as e:
+            await interaction.response.send_message(embed=Error_Dialog_Embed(f"역할을 부여하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+class Settings(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.threshold_file = "server_threshold.json"
-        self.threshold = {}
-        self.settings_file = "server_settings.json"
-        self.settings = self.load_settings()
-        self.user_messages = {}
-        self.punishment_logs = {}
+        self.Warning_Data_Path = "Datas/Warning_Data.json"
+        self.Settings_Data_Path = "Datas/Settings_Data.json"
+
+    Settings_CMDGroup = discord.SlashCommandGroup("설정")
+    Warning_Settings_CMDGroup = Settings_CMDGroup.create_subgroup("경고")
+
+    # /설정 경고 초기화
+    @Warning_Settings_CMDGroup.command(name="초기화", description="서버의 모든 경고 데이터를 초기화합니다. 서버 소유자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Reset_Warnings_Data(self, ctx):
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
+
+        View = Reset_Confirm_View(ctx.author)
+        Response = await ctx.respond(embed=discord.Embed(
+            title="⚠️ 서버 경고 데이터 초기화",
+            description="정말로 이 서버의 모든 경고 데이터를 초기화하시겠습니까? **이 작업은 되돌릴 수 없습니다.**",
+            color=discord.Color.red()
+        ), view=View, ephemeral=True)
+        await View.wait()
         
+        if View.Value is None:
+            return await Response.edit(embed=Error_Dialog_Embed("시간이 초과되어 초기화가 취소되었습니다."), view=None)
+            
+        if not View.Value:
+            return await Response.edit(embed=Success_Dialog_Embed("경고 데이터 초기화가 취소되었습니다."), view=None)
+        
+        try:
+            Warnings = Load_Data(self.Warning_Data_Path)
+            Guild_ID = f"{ctx.guild.id}_"
+            Deleted = [key for key in Warnings.keys() if key.startswith(f"{Guild_ID}")]
+
+            if not Deleted:
+                return await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 경고 데이터가 없습니다."), view=None)
+            
+            for key in Deleted:
+                del Warnings[key]
+
+            Save_Data(self.Warning_Data_Path, Warnings)
+            await Response.edit(embed=Success_Dialog_Embed("이 서버의 모든 경고 데이터를 초기화했습니다."), view=None)
+            Print_Log("Settings", "경고 데이터를 초기화했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await Response.edit(embed=Error_Dialog_Embed(f"경고 데이터 초기화 중 오류가 발생했습니다. ({e})"), view=None)
+
+    # /설정 경고 자동처벌 [활성화 / 비활성화] [횟수] [처벌] [기간]
+    @Warning_Settings_CMDGroup.command(name="자동처벌", description="일정 경고 횟수 도달 시 자동으로 부여할 처벌을 설정합니다. 서버 관리자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Setup_Warning_Threshold(self, ctx, Enabled: discord.Option(bool, name="활성화", description="자동 처벌 활성화 여부를 선택하세요."),
+        Count: discord.Option(int, name="횟수", description="처벌을 실행할 경고 횟수를 지정하세요.", min_value=1),
+        Action: discord.Option(str, name="처벌", description="자동으로 실행할 처벌의 종류를 선택하세요.", choices=["차단", "추방", "타임아웃"]),
+        Duration: discord.Option(str, name="기간", description="타임아웃을 부여할 기간을 입력하세요. (ex: 7일, 10분)", required=False, default="7일")):
+        
+        # 권한 확인
+        if not ctx.author.guild_permissions.administrator:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 관리자 권한이 없습니다."), ephemeral=True)
+
+        # 타임아웃 기간 형식 확인
+        if Action == "타임아웃" and not Parse_Duration(Duration):
+            return await ctx.respond(embed=Error_Dialog_Embed("올바른 기간 형식을 입력해주세요."), ephemeral=True)
+
+        try:
+            # 설정 불러오기
+            Settings = Load_Data(self.Settings_Data_Path)
+            Guild_Settings = Settings.setdefault(str(ctx.guild.id), {})
+            
+            if not Enabled:
+                Guild_Settings.pop("Auto_Punish", None)
+                Message = "자동 처벌 설정을 비활성화했습니다."
+            else:
+                Guild_Settings["Auto_Punish"] = {"Enabled": True, "Count": Count, "Action": Action, "Duration": Duration if Action == "타임아웃" else None}
+                Message = f"경고 **{Count}회** 도달 시 자동으로 {Action}{f' ({Duration})' if Action == '타임아웃' else ''}하도록 설정했습니다."
+            
+            Save_Data(self.Settings_Data_Path, Settings)
+            await ctx.respond(embed=Success_Dialog_Embed(Message), ephemeral=True)
+            Print_Log("Settings", "자동 처벌 설정을 변경했습니다.", ctx.guild.name, ctx.author.name, Extra=f"상태: {'활성화' if Enabled else '비활성화'}")
+        except Exception as e:
+            await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+    # 보안 시스템 설정 명령어 그룹
+    Security_Settings_CMDGroup = Settings_CMDGroup.create_subgroup("보안")
+
+    async def Update_Security_Settings(self, ctx, Key: str, Data: dict | None, Message: str, Log_Name: str):
+        try:
+            Settings = Load_Data(self.Settings_Data_Path)
+            Guild_Settings = Settings.setdefault(str(ctx.guild.id), {})
+
+            if Data is None:
+                Guild_Settings.pop(Key, None)
+            else:
+                Guild_Settings[Key] = Data
+
+            Save_Data(self.Settings_Data_Path, Settings)
+            await ctx.respond(embed=Success_Dialog_Embed(Message), ephemeral=True)
+            Print_Log("Settings", Log_Name, ctx.guild.name, ctx.author.name, Extra=f"설정: {'활성화' if Enabled else '비활성화'}")
+        except Exception as e:
+            await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+    # /설정 보안 도배감지 [활성화 / 비활성화] [개수] [시간] [처벌] [모드] [기간]
+    @Security_Settings_CMDGroup.command(name="도배감지", description="도배 감지 시 자동으로 부여할 처벌을 설정합니다. 서버 관리자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Setup_Anti_Spam(self, ctx, Enabled: discord.Option(bool, name="활성화", description="도배 감지 활성화 여부를 선택하세요."),
+        Count: discord.Option(int, name="개수", description="감지할 메시지 개수를 지정하세요. (2 ~)", min_value=2),
+        Seconds: discord.Option(int, name="시간", description="메시지를 감지할 시간을 지정하세요. (초, 1 ~ 60)", min_value=1, max_value=60),
+        Action: discord.Option(str, name="처벌", description="실행할 처벌의 종류를 지정하세요.", choices=["차단", "추방", "타임아웃"]),
+        Mode: discord.Option(str, name="모드", description="감지할 메시지의 종류를 지정하세요.", choices=["모든 메세지", "동일한 메세지"]),
+        Duration: discord.Option(str, name="기간", description="타임아웃을 부여할 기간을 지정하세요. (선택)", required=False, default="1시간")):
+        # 권한 확인
+        if not ctx.author.guild_permissions.administrator:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 관리자 권한이 없습니다."), ephemeral=True)
+
+        # 타임아웃 기간 형식 확인
+        if action == "타임아웃" and not Parse_Duration(duration):
+            return await ctx.respond(embed=Error_Dialog_Embed("올바른 기간 형식을 입력해주세요."), ephemeral=True)
+
+        Data = None
+        Message = "도배 감지 설정을 비활성화했습니다."
+
+        if Enabled:
+            Data = {
+                "Enabled": True, "Count": Count, "Seconds": Seconds,
+                "Action": Action, "Mode": Mode, "Duration": Duration if Action == "타임아웃" else None
+            }
+            Message = f"**{Seconds}초** 이내에 **{'모든' if Mode == '모든 메세지' else '동일한 내용의'}** 메시지를 **{Count}개** 이상 보낼 경우 자동으로 **{Action}**하도록 설정했습니다."
+
+        await Update_Security_Settings(ctx, "Anti_Spam", Data, Message, "도배 감지 설정을 변경했습니다.")
+
+    # /설정 보안 권한부여감지 [활성화 / 비활성화]
+    @Security_Settings_CMDGroup.command(name="권한부여감지", description="관리자 권한 부여 시 권한을 부여한 사용자와 대상자를 차단합니다. 서버 소유자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Setup_Anti_Admin(self, ctx, Enabled: discord.Option(bool, name="활성화", description="권한 부여 감지 활성화 여부를 선택하세요.")):
+        # 권한 확인
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
+
+        await self.Update_Security_Settings(ctx, "Anti_Admin", {"Enabled": Enabled}, "권한 부여 감지 설정을 변경했습니다.")
+
+    # /설정 보안 레이드감지 [활성화 / 비활성화] [개수] [시간]
+    @Security_Settings_CMDGroup.command(name="레이드감지", description="지정한 시간 내 다발적 채널 생성 또는 삭제를 감지합니다. 서버 소유자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Setup_Anti_Raid(self, ctx, Enabled: discord.Option(bool, name="활성화", description="채널 방어 활성화 여부를 선택하세요."),
+        Count: discord.Option(int, name="개수", description="감지할 채널 작업 개수를 지정하세요. (2 ~)", min_value=2),
+        Seconds: discord.Option(int, name="시간", description="채널 작업을 감지할 시간을 지정하세요. (초, 1 ~ 60)", min_value=1, max_value=60)):
+        
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
+
+        Data = None
+        Message = "레이드 감지 설정을 비활성화했습니다."
+
+        if Enabled:
+            Data = {"Enabled": True, "Count": Count, "Seconds": Seconds}
+            Message = f"**{Seconds}초** 이내에 채널을 **{Count}개** 이상 생성 또는 삭제할 경우 사용자를 자동으로 **차단**하도록 설정했습니다."
+
+        await Update_Security_Settings(ctx, "Anti_Channel", Data, Message, "레이드 감지 설정을 변경했습니다.")
+
+    # 티켓 시스템 설정 명령어 그룹
+    Ticket_Settings_CMDGroup = Settings_CMDGroup.create_subgroup("티켓")
+
+    # /설정 티켓 설정 [생성] [보관] [역할] [로그]
+    @Ticket_Settings_CMDGroup.command(name="설정", description="이 서버의 티켓 시스템을 설정합니다. 관리자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Setup_Ticket_System(self, ctx, Category: discord.Option(discord.CategoryChannel, name="생성", description="티켓이 생성될 카테고리를 선택하세요.", required=True),
+        Archive: discord.Option(discord.CategoryChannel, name="보관", description="티켓이 보관될 카테고리를 선택하세요.", required=True),
+        Role: discord.Option(discord.Role, name="역할", description="티켓에 접근할 수 있는 관리자 역할을 선택하세요.", required=True),
+        Log: discord.Option(discord.TextChannel, name="로그", description="티켓 대화 내역(txt)이 저장될 채널을 선택하세요. (선택)", required=False)):
+        
+        try:
+            Settings = Load_Data(self.Settings_Data_Path)
+            Ticket_Settings = Settings.setdefault(str(ctx.guild.id), {}).setdefault("Ticket", {})
+            
+            Ticket_Settings.update({
+                "Category_ID": Category.id,
+                "Archive_Category_ID": Archive.id,
+                "Staff_Role_ID": Role.id,
+                "Log_Channel_ID": Log.id if Log else None
+            })
+            
+            Save_Data(self.Settings_Data_Path, Settings)
+            
+            embed = discord.Embed(title="✅ 티켓 시스템을 설정했습니다.", color=discord.Color.green())
+            if category: embed.add_field(name="생성 카테고리", value=category.mention, inline=True)
+            if archive: embed.add_field(name="보관 카테고리", value=archive.mention, inline=True)
+            if role: embed.add_field(name="관리자 역할", value=role.mention, inline=True)
+            if log: embed.add_field(name="로그 채널", value=log.mention, inline=True)
+            
+            await ctx.respond(embed=embed, ephemeral=True)
+            Print_Log("Settings", "티켓 시스템을 설정했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+    # /설정 티켓 초기화
+    @Ticket_Settings_CMDGroup.command(name="초기화", description="이 서버의 티켓 시스템 설정을 초기화합니다. 서버 소유자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Reset_Ticket_System(self, ctx):
+        # 권한 확인
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
+
+        View = Reset_Confirm_View(ctx.author)
+
+        Response = await ctx.respond(embed=discord.Embed(
+            title="⚠️ 티켓 시스템 초기화",
+            description="정말로 이 서버의 티켓 시스템 설정을 초기화하시겠습니까? **이 작업은 되돌릴 수 없습니다.**",
+            color=discord.Color.red()
+        ), view=View, ephemeral=True)
+        await View.wait()
+        
+        if View.Value is None:
+            return await Response.edit(embed=Error_Dialog_Embed("시간이 초과되었습니다."), view=None)
+
+        if not View.Value:
+            return await Response.edit(embed=Success_Dialog_Embed("티켓 시스템 설정 초기화를 취소했습니다."), view=None)
+
+        try:
+            Settings = Load_Data(self.Settings_Data_Path)
+            Guild_Settings = Settings.get(str(ctx.guild.id), {})
+            
+            if "Ticket" not in Guild_Settings:
+                return await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 티켓 시스템 설정이 없습니다."), view=None)
+
+            del Guild_Settings["Ticket"]
+            Save_Data(self.Settings_Data_Path, Settings)
+            
+            await Response.edit(embed=Success_Dialog_Embed("이 서버의 티켓 시스템 설정을 초기화했습니다."), view=None)
+            Print_Log("Settings", "티켓 시스템 설정을 초기화했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await Response.edit(embed=Error_Dialog_Embed(f"티켓 시스템 설정을 초기화하는 중 오류가 발생했습니다. ({e})"), view=None)
+
+    # 인증 시스템 설정 명령어 그룹
+    Verify_Settings_CMDGroup = Settings_CMDGroup.create_subgroup("인증")
+
+    # /설정 인증 설정 [역할] [설명]
+    @Verify_Settings_CMDGroup.command(name="설정", description="인증 메세지를 생성하고 현재 채널에 전송합니다. 관리자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Setup_Verify_System(self, ctx, Role: discord.Option(discord.Role, name="역할", description="인증 시 부여할 역할을 지정하세요.", required=True),
+        Description: discord.Option(str, name="설명", description="인증 메세지의 내용을 지정하세요. (선택)", required=False)):
+        
+        try:
+            Settings = Load_Data(self.Settings_Data_Path)
+            Settings.setdefault(str(ctx.guild.id), {})["Verify"] = {"Role_ID": Role.id}
+            Save_Data(self.Settings_Data_Path, Settings)
+            
+            embed = discord.Embed(
+                title="멤버 인증",
+                description=Description or "✅ 인증하기 버튼을 클릭하여 인증하세요.",
+                color=discord.Color.green()
+            )
+            embed.set_footer(text="인증을 완료하면 서버를 이용하실 수 있습니다.")
+            
+            await ctx.respond(embed=Success_Dialog_Embed("인증 메세지를 생성했습니다."), ephemeral=True)
+            await ctx.channel.send(embed=embed, view=Verify_View())
+            Print_Log("Settings", "인증 메세지를 생성했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await ctx.respond(embed=Error_Dialog_Embed(f"설정을 저장하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+    # /설정 인증 초기화
+    @Verify_Settings_CMDGroup.command(name="초기화", description="이 서버의 인증 시스템 설정을 초기화합니다. 서버 소유자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Reset_Verify_System(self, ctx):
+        # 권한 확인
+        if ctx.author.id != ctx.guild.owner_id:
+            return await ctx.respond(embed=Error_Dialog_Embed("사용자에게 서버 소유자 권한이 없습니다."), ephemeral=True)
+
+        View = Reset_Confirm_View(ctx.author)
+        
+        Response = await ctx.respond(embed=discord.Embed(
+            title="⚠️ 인증 시스템 초기화",
+            description="정말로 이 서버의 인증 시스템 설정을 초기화하시겠습니까? **이 작업은 되돌릴 수 없습니다.**",
+            color=discord.Color.red()
+        ), view=View, ephemeral=True)
+        await View.wait()
+        
+        if View.Value is None:
+            return await Response.edit(embed=Error_Dialog_Embed("시간이 초과되었습니다."), view=None)
+
+        if not View.Value:
+            return await Response.edit(embed=Success_Dialog_Embed("인증 시스템 설정 초기화를 취소했습니다."), view=None)
+
+        try:
+            Settings_Data = Load_Data(self.Settings_Data_Path)
+            Guild_Settings = Settings.get(str(ctx.guild.id), {})
+
+            if "Verify" not in Guild_Settings:
+                return await Response.edit(embed=Error_Dialog_Embed("이 서버에 저장된 인증 시스템 설정이 없습니다."), view=None)
+
+            del Guild_Settings["Verify"]
+            Save_Data(self.Settings_Data_Path, Settings)
+
+            await Response.edit(embed=Success_Dialog_Embed("이 서버의 인증 시스템 설정을 초기화했습니다."), view=None)
+            Print_Log("Settings", "인증 시스템 설정을 초기화했습니다.", ctx.guild.name, ctx.author.name)
+        except Exception as e:
+            await Response.edit(embed=Error_Dialog_Embed(f"인증 시스템 설정을 초기화하는 중 오류가 발생했습니다. ({e})"), view=None)
+
     @commands.Cog.listener()
     async def on_ready(self):
-        self.threshold = self.load_threshold()
-        for guild_id, data in self.settings.items():
-            try:
-                guild = self.bot.get_guild(int(guild_id))
-                if not guild:
-                    continue
-                channel = guild.get_channel(data["captcha_channel"])
-                if not channel:
-                    continue
-                captcha_mode = data.get("captcha_mode", "button")
-                if captcha_mode == "button":
-                    view = self.ButtonCaptchaView(int(guild_id), data["verify_role"])
-                    self.bot.add_view(view)
-                else:
-                    continue
-            except discord.NotFound:
-                continue
-        print("[Settings] 서버 별 설정 파일 및 인증 파일을 로드했습니다.")
-
-    def load_threshold(self):
-        try:
-            with open(self.threshold_file, "r") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return {}
-        
-    def save_threshold(self):
-        with open(self.threshold_file, "w") as f:
-            json.dump(self.threshold, f, indent=4)
-
-    def load_settings(self):
-        if not os.path.exists(self.settings_file):
-            return {}
-        try:
-            with open(self.settings_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            return {}
-
-    def save_settings(self):
-        with open(self.settings_file, "w", encoding="utf-8") as f:
-            json.dump(self.settings, f, ensure_ascii=False, indent=4)
-    
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
-            return
-
-        guild_id = str(message.guild.id)
-        user_id = str(message.author.id)
-
-        if guild_id not in self.settings:
-            return
-        config = self.settings[guild_id]
-
-        if not config.get("antispam_enabled", False):
-            return
-
-        now = datetime.datetime.utcnow()
-
-        if guild_id not in self.user_messages:
-            self.user_messages[guild_id] = {}
-        if user_id not in self.user_messages[guild_id]:
-            self.user_messages[guild_id][user_id] = []
-
-        self.user_messages[guild_id][user_id].append(now)
-
-        time_window = config.get("time_window", 5)
-        threshold = config.get("spam_threshold", 5)
-        timeout_duration_str = config.get("timeout_duration", "10초")
-        timeout_seconds = self.parse_duration(timeout_duration_str)
-
-        self.user_messages[guild_id][user_id] = [
-            t for t in self.user_messages[guild_id][user_id]
-            if (now - t).total_seconds() <= time_window
-        ]
-
-        if len(self.user_messages[guild_id][user_id]) >= threshold:
-            try:
-                timeout_until = datetime.datetime.utcnow() + datetime.timedelta(seconds=timeout_seconds)
-                await message.author.timeout(timeout_until, reason="도배 감지")
-                embed = discord.Embed(title=f":no_entry: {message.author.display_name}님에게 타임아웃을 부여했습니다.", color=discord.Color.yellow())
-                embed.add_field(name="지속 시간", value=timeout_duration_str, inline=True)
-                embed.add_field(name="사유", value="도배 감지", inline=True)
-                embed.add_field(name="요청자", value="서버 소유자가 설정함", inline=True)
-                embed.set_thumbnail(url=message.author.avatar)
-                embed.set_footer(text=f"일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                await message.channel.send(embed=embed)
-            except discord.Forbidden:
-                await message.channel.send(embed=discord.Embed(description=f":warning: 애플리케이션에게 타임아웃 멤버 권한이 없습니다. 서버 소유자 또는 관리자에게 문의하세요."), ephemeral=True)
-
-            self.user_messages[guild_id][user_id] = []
-
-    def parse_duration(self, duration_str: str) -> datetime.timedelta:
-        if "초" in duration_str:
-            return datetime.timedelta(seconds=int(duration_str.replace("초","")))
-        elif "분" in duration_str:
-            return datetime.timedelta(minutes=int(duration_str.replace("분","")))
-        elif "시간" in duration_str:
-            return datetime.timedelta(hours=int(duration_str.replace("시간","")))
-        elif "일" in duration_str:
-            return datetime.timedelta(days=int(duration_str.replace("일","")))
-        elif "주" in duration_str:
-            return datetime.timedelta(weeks=int(duration_str.replace("주","")))
-        else:
-            return 10
-        
-    class ButtonCaptchaView(View):
-        def __init__(self, guild_id, role_id):
-            super().__init__(timeout=None)
-            self.guild_id = guild_id
-            self.role_id = role_id
-            button = Button(label="인증하기", style=discord.ButtonStyle.green, custom_id=f"verify_button_{guild_id}")
-            button.callback = self.verify
-            self.add_item(button)
-
-        async def verify(self, interaction: discord.Interaction):
-            role = interaction.guild.get_role(self.role_id)
-            if role is None:
-                return await interaction.response.send_message(embed=discord.Embed(description=":warning: 역할을 찾을 수 없습니다. 서버 소유자 또는 관리자에게 문의하세요."), ephemeral=True)
-
-            if role not in interaction.user.roles:
-                await interaction.user.add_roles(role)
-                await interaction.response.send_message(embed=discord.Embed(description=":white_check_mark: 역할을 부여했습니다."), ephemeral=True)
-            else:
-                await interaction.response.send_message(embed=discord.Embed(description=":white_check_mark: 이미 인증된 상태입니다."), ephemeral=True)
-
-    Settings = discord.SlashCommandGroup("설정")
-    Warning = Settings.create_subgroup("경고")
-
-    @Warning.command(name="자동차단", description="지정한 경고 횟수 도달 시 멤버를 자동으로 차단합니다. 서버 소유자 권한을 요구합니다.", options=[
-        discord.Option(str, name="상태", description="활성화 여부", choices=["활성화", "비활성화"], required=True),
-        discord.Option(int, name="횟수", description="차단할 경고 횟수", required=False)])
-    @discord.default_permissions(administrator=True)
-    async def warn_threshold(self, ctx, enable: str, threshold: int = None):
-        if not ctx.author == ctx.guild.owner:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 사용자가 서버 소유자가 아닙니다."), ephemeral=True)
-        
-        if enable == "활성화":
-            if threshold is None:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 개수를 지정하세요."), ephemeral=True)
-            if threshold <= 0:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 1 이상의 정수를 입력하세요."), ephemeral=True)
-
-            guild_id_str = str(ctx.guild.id)
-            self.threshold[guild_id_str] = {
-                'enabled': True,
-                'threshold': threshold}
-            await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 경고 `{threshold}`회 도달 시 사용자가 차단되도록 설정했습니다."), ephemeral=True)
-            print(f"[Command | Settings] 사용자가 최대 경고 수를 변경했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-            
-        if enable == "비활성화":
-            if threshold is None:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 개수를 지정하세요."), ephemeral=True)
-            if threshold <= 0:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 1 이상의 정수를 입력하세요."), ephemeral=True)
-
-            guild_id_str = str(ctx.guild.id)
-            self.threshold[guild_id_str] = {
-                'enabled': False,
-                'threshold': 0}
-            await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 자동 차단 기능을 비활성화했습니다."), ephemeral=True)
-            print(f"[Command | Settings] 사용자가 자동 차단을 비활성화했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-        self.save_threshold()
-    @warn_threshold.error
-    async def warn_threshold_error(self, ctx, error):
-        if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.respond(embed=discord.Embed(description=":warning: 최대 경고 값은 숫자여야 합니다."), ephemeral=True)
-
-    @Settings.command(name="도배감지", description="서버의 도배 감지 기준을 설정합니다. 서버 소유자 권한을 요구합니다.", options=[
-        discord.Option(str, name="상태", description="활성화 여부", choices=["활성화", "비활성화"], required=True),
-        discord.Option(int, name="갯수", description="감지할 메세지 갯수", required=False),
-        discord.Option(int, name="감지시간", description="지정한 시간 안에 메세지 갯수만큼 입력 시 타임아웃 (초 단위)", required=False),
-        discord.Option(str, name="기간", description="타임아웃할 기간 (ex: 10초, 3분, 2시간, 1일, 4주)", required=False)])
-    @discord.default_permissions(administrator=True)
-    async def set_spam(self, ctx, mode: str, time: int, second: int, duration: str):
-        if ctx.author.id != ctx.guild.owner_id:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 사용자가 서버 소유자가 아닙니다."), ephemeral=True)
-        if mode == "활성화":
-            if second is None:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 감지 시간을 지정하세요."), ephemeral=True)
-            if time is None:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 감지할 메세지 갯수를 지정하세요."), ephemeral=True)
-            if duration is None:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 타임아웃 기간을 지정하세요."), ephemeral=True)
-            if second < 1:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 감지 시간은 1초보다 길어야 합니다."), ephemeral=True)
-            if time < 1:
-                return await ctx.respond(embed=discord.Embed(description=":warning: 감지할 메세지 갯수는 1 이상이어야 합니다."), ephemeral=True)
-            if self.parse_duration(duration) > datetime.timedelta(days=28):
-                return await ctx.respond(embed=discord.Embed(description=":warning: 타임아웃 기간은 28일(4주)보다 짧아야 합니다."), ephemeral=True)
-            if self.parse_duration(duration) < datetime.timedelta(seconds=10):
-                return await ctx.respond(embed=discord.Embed(description=":warning: 타임아웃 기간은 10초보다 길어야 합니다."), ephemeral=True)
-            
-            guild_id = str(ctx.guild.id)
-            self.settings[guild_id] = {
-                "antispam_enabled": True if mode == "활성화" else False,
-                "spam_threshold": time,
-                "time_window": second,
-                "timeout_duration": duration 
-            }
-            self.save_settings()
-            await ctx.respond(embed=discord.Embed(description=f":white_check_mark: `{second}초` 안에 메세지 `{time}`개 전송 시 `{duration}`동안 타임아웃하도록 설정했습니다."), ephemeral=True)
-        elif mode == "비활성화":
-            guild_id = str(ctx.guild.id)
-            self.settings[guild_id] = {"antispam_enabled": False}
-            self.save_settings()
-            await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 도배 감지 기능을 비활성화했습니다."), ephemeral=True)
-
-    @Settings.command(name="인증", description="인증 메시지를 생성합니다. 서버 소유자 권한을 요구합니다.", options=[
-        discord.Option(discord.Role, name="역할", description="인증 시 부여할 역할", default_member_permissions=discord.Permissions(administrator=True), required=True),
-        discord.Option(str, name="메세지", description="인증 메세지 (선택)", required=False)])
-    @discord.default_permissions(administrator=True)
-    async def set_captcha(self, ctx, role: discord.Role, message: str = None):
-        if not ctx.author.guild_permissions.administrator:
-            return await ctx.respond(embed=discord.Embed(description=":warning: 사용자에게 관리자 권한이 없습니다."), ephemeral=True)
-
-        guild_id = str(ctx.guild.id)
-        self.settings[guild_id] = {
-            "captcha_channel": ctx.channel.id,
-            "verify_role": role.id,
-            "captcha_message": message if message else "✅ 인증하기 버튼을 클릭하여 인증하세요.",
-            "captcha_message_id": None
-        }
-        self.save_settings()
-
-        channel = ctx.channel
-        sent_message = await channel.send(content=self.settings[guild_id]["captcha_message"], view=self.ButtonCaptchaView(ctx.guild.id, role.id))
-        self.settings[guild_id]["captcha_message_id"] = sent_message.id
-        self.save_settings()
-
-        await ctx.respond(embed=discord.Embed(description=":white_check_mark: 인증 메세지를 생성했습니다."), ephemeral=True)
+        self.bot.add_view(Verify_View())
 
 def setup(bot):
-    bot.add_cog(settings(bot))
+    bot.add_cog(Settings(bot))

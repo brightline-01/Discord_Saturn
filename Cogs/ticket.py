@@ -1,251 +1,251 @@
-import discord
+import discord, asyncio, datetime, io
 from discord.ext import commands
-import json
-import os
-import datetime
-import re
+from Resources import Current_Time, Error_Dialog_Embed, Success_Dialog_Embed, Print_Log, Load_Data, Save_Data, Button_Interaction
 
-ticket_settings_file = "ticket_settings.json"
+# 티켓 전체 삭제 확인 뷰 클래스
+class Ticket_Cleanup_Confirm_View(discord.ui.View):
+    def __init__(self, Author: discord.User):
+        super().__init__(timeout=30)
+        self.Author = Author
+        self.Value = None
 
-class ticket(commands.Cog):
+    @discord.ui.button(label="예, 모두 삭제합니다", style=discord.ButtonStyle.red)
+    async def Confirm(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await Button_Interaction(self, interaction, True)
+
+    @discord.ui.button(label="아니요", style=discord.ButtonStyle.green)
+    async def Cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await Button_Interaction(self, interaction, False)
+
+# 티켓 보관 뷰 클래스
+class Ticket_Archive_View(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="티켓 삭제", style=discord.ButtonStyle.red, emoji="🗑️", custom_id="ticket_delete")
+    async def Delete_Ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
+        # 권한 확인
+        if not interaction.user.guild_permissions.manage_channels:
+            return await interaction.response.send_message(embed=Error_Dialog_Embed("티켓을 삭제할 권한이 없습니다."), ephemeral=True)
+
+        await interaction.response.defer()
+        
+        # 티켓 아카이브 생성 스크립트 실행
+        await Generate_Ticket_Archive(interaction.channel, interaction.user)
+
+        # 채널 삭제
+        await interaction.followup.send(embed=Error_Dialog_Embed("티켓을 영구적으로 삭제합니다. 잠시 후 채널이 삭제됩니다."))
+        await asyncio.sleep(3)
+        try:
+            await interaction.channel.delete(reason=f"티켓 삭제 (요청자: {interaction.user.name})")
+        except:
+            pass
+
+# 티켓 아카이브 생성 및 전송 스크립트
+async def Generate_Ticket_Archive(channel: discord.TextChannel, requester: discord.User):
+    try:
+        Messages = [f"[{msg.created_at:%Y-%m-%d %H:%M:%S}]"
+                    f"{msg.author.display_name} ({msg.author.id}):"
+                    f"{msg.clean_content or ('[파일 또는 Embed 메세지]' if msg.attachments or msg.embeds else '')}"
+                    async for msg in channel.history(limit=None, oldest_first=True)]
+        
+        Log_Content = "------------------------------------------\n"
+        Log_Content += f"티켓 아카이브 | {channel.name}\n"
+        Log_Content += f"티켓 삭제 일시 | {Current_Time()}\n"
+        Log_Content += f"티켓 삭제 요청자 | {requester.display_name} ({requester.id})\n"
+        Log_Content += "------------------------------------------\n\n"
+        Log_Content += "\n".join(Messages)
+        
+        Log_File = discord.File(io.BytesIO(Log_Content.encode("utf-8")), filename=f"{channel.name}_Archive.txt")
+        
+        # 설정 불러오기
+        Settings = Load_Data("Datas/Settings_Data.json")
+        Log_Channel_ID = Settings.get(str(channel.guild.id), {}).get("Ticket", {}).get("Log_Channel_ID")
+        Log_Channel = channel.guild.get_channel(Log_Channel_ID)
+        
+        if not Log_Channel:
+            return False
+
+        # 티켓 아카이브 전송
+        await Log_Channel.send(
+            embed=discord.Embed(
+                title="💬 티켓 로그 아카이브",
+                description=f"`{channel.name}` 티켓이 {requester.mention}님에 의해 삭제되었습니다.\n위의 텍스트 파일은 전체 대화 내역입니다.",
+                color=discord.Color.blue()
+            ), file=Log_File)
+        Print_Log("Ticket", f"티켓을 삭제했습니다.", channel.guild.name, requester.name)
+        return True
+    except Exception as e:
+        Print_Log("Ticket", f"티켓 아카이브를 생성하는 중 오류가 발생했습니다.", channel.guild.name, "애플리케이션", f"({e})")
+        return False
+
+# 티켓 컨트롤 뷰 클래스
+class Ticket_Control_View(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="티켓 보관", style=discord.ButtonStyle.red, emoji="📥", custom_id="ticket_close")
+    async def Close_Ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
+        # 권한 확인
+        if not interaction.user.guild_permissions.manage_channels:
+            return await interaction.response.send_message(embed=Error_Dialog_Embed("티켓을 보관할 권한이 없습니다."), ephemeral=True)
+
+        await interaction.response.defer()
+
+        try:
+            # 설정 불러오기
+            Settings = Load_Data("Datas/Settings_Data.json")
+            Archive_Category_ID = Settings.get(str(interaction.guild.id), {}).get("Ticket", {}).get("Archive_Category_ID")
+            Archive_Category = interaction.guild.get_channel(Archive_Category_ID) if Archive_Category_ID else None
+
+            # 채널 이름 변경
+            await interaction.channel.edit(name=interaction.channel.name.replace('ticket-', 'closed-'),
+                                            category=Archive_Category,
+                                            sync_permissions=False if Archive_Category else True,
+                                            reason=f"티켓 보관 (요청자: {interaction.user.name})")
+
+            for Target, Overwrite in interaction.channel.overwrites.items():
+                if isinstance(Target, discord.Member) and not Target.bot:
+                    Overwrite.view_channel = False
+                    await interaction.channel.set_permissions(Target, overwrite=Overwrite)
+
+            await interaction.channel.send(embed=discord.Embed(title="📥 티켓이 보관되었습니다.",
+                                                                description=f"{interaction.user.mention}님이 티켓을 보관했습니다.",
+                                                                color=discord.Color.blue()), view=Ticket_Archive_View())
+            Print_Log("Ticket", "티켓을 보관했습니다.", interaction.guild.name, interaction.user.name)   
+        except Exception as e:
+            await interaction.followup.send(embed=Error_Dialog_Embed(f"티켓을 보관하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+# 티켓 보드 뷰 클래스
+class Ticket_Board_View(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="티켓 생성", style=discord.ButtonStyle.primary, emoji="🎫", custom_id="ticket_open")
+    async def Open_Ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
+        Guild = interaction.guild
+        User = interaction.user
+        
+        try:
+            Settings = Load_Data("Datas/Settings_Data.json")
+            Guild_Data = Settings.setdefault(str(Guild.id), {}).setdefault("Ticket", {})
+            New_ID = Guild_Data.get("Last_ID", 0) + 1
+            Guild_Data["Last_ID"] = New_ID
+            Save_Data("Datas/Settings_Data.json", Settings)
+
+            Category = Guild.get_channel(Guild_Data.get("Category_ID"))
+            Staff_Role = Guild.get_role(Guild_Data.get("Staff_Role_ID"))
+
+            Overwrites = {
+                Guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                User: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+                Guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True)
+            }
+        
+            if Staff_Role:
+                Overwrites[Staff_Role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+
+            Ticket_Channel = await Guild.create_text_channel(
+                name=f"ticket-{New_ID:04d}",
+                category=Category,
+                overwrites=Overwrites,
+                reason=f"티켓 생성 (요청자: {User.name})"
+            )
+            
+            await Ticket_Channel.send(
+                embed=discord.Embed(
+                    title=f"🎫 티켓을 생성했습니다.",
+                    description=f"{User.mention}님, 문의 내용을 작성해주시면 {Staff_Role.mention if Staff_Role else '관리자'}이(가) 확인 후 답변해 드리겠습니다.",
+                    color=discord.Color.blue()
+                ).set_footer(text=f"일시: {Current_Time()}"), view=Ticket_Control_View()
+            )
+
+            await interaction.response.send_message(embed=Success_Dialog_Embed(f"티켓이 생성되었습니다: {Ticket_Channel.mention}"), ephemeral=True)
+            Print_Log("Ticket", "티켓을 생성했습니다.", Guild.name, User.name)
+        except Exception as e:
+            await interaction.response.send_message(embed=Error_Dialog_Embed(f"티켓을 생성하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
+
+class Ticket(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.Settings_Data_Path = "Datas/Settings_Data.json"
 
     @commands.Cog.listener()
     async def on_ready(self):
-        self.bot.add_view(TicketView(self.bot))
-        if discord.NotFound:
-            pass
-        print("[Ticket] 서버 별 티켓 설정 파일을 로드했습니다.")
+        self.bot.add_view(Ticket_Board_View())
+        self.bot.add_view(Ticket_Control_View())
+        self.bot.add_view(Ticket_Archive_View())
 
-    Ticket = discord.SlashCommandGroup("티켓")
+    Ticket_CMDGroup = discord.SlashCommandGroup("티켓")
 
-    @Ticket.command(name="설정", description="티켓 생성용 메세지를 설정합니다. 서버 소유자 권한을 요구합니다.", options=[
-        discord.Option(discord.Role, name="역할", description="티켓을 관리할 역할"),
-        discord.Option(discord.CategoryChannel, name="생성", description="티켓이 생성될 카테고리"),
-        discord.Option(discord.CategoryChannel, name="보관", description="티켓이 보관될 카테고리"),
-        discord.Option(discord.TextChannel, name="아카이브", description="티켓 아카이브를 전송할 채널", required=False)
-    ])
-    @commands.has_permissions(administrator=True)
-    async def ticket_setup(self, ctx, support_role: discord.Role, ticket_category: discord.CategoryChannel, closed_category: discord.CategoryChannel, log_channel: discord.TextChannel):
-        settings = {}
-        if os.path.exists(ticket_settings_file):
-            with open(ticket_settings_file, "r", encoding="utf-8") as f:
-                settings = json.load(f)
+    @Ticket_CMDGroup.command(name="보드", description="티켓 보드를 현재 채널에 전송합니다. 관리자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Send_Panel(self, ctx):
+        # 설정 불러오기
+        Ticket_Settings = (Load_Data(self.Settings_Data_Path).get(str(ctx.guild.id), {}).get("Ticket", {}))
 
-        settings[str(ctx.guild.id)] = {
-            "support_role": support_role.id,
-            "ticket_category": ticket_category.id,
-            "closed_category": closed_category.id,
-            "log_channel": log_channel.id if log_channel else None
-        }
+        # 설정 확인
+        if not all(Ticket_Settings.get(key) for key in ["Category_ID", "Archive_Category_ID", "Staff_Role_ID"]):
+            return await ctx.respond(embed=Error_Dialog_Embed("티켓 시스템이 설정되어 있지 않습니다. `/설정 티켓 설정` 명령어를 통해 먼저 티켓 시스템 설정을 완료해주세요."), ephemeral=True)
 
-        with open(ticket_settings_file, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=4, ensure_ascii=False)
+        await ctx.respond(embed=Success_Dialog_Embed("티켓 보드를 전송했습니다."), ephemeral=True)
+        
+        await ctx.channel.send(embed=discord.Embed(
+            title="🎫 서버 문의",
+            description="도움이 필요하거나 문의 사항이 있으시다면 아래 버튼을 눌러 티켓을 생성하세요.",
+            color=discord.Color.blue()
+        ).set_footer(text="티켓을 생성하면 티켓 생성자와 서버 관리자만 접근할 수 있는 비공개 채널이 생성됩니다."), view=Ticket_Board_View())
 
-        view = TicketView(self.bot)
-        embed = discord.Embed(title="🎫 서버 문의", description="아래 버튼을 눌러 티켓을 생성하세요.", color=discord.Color.blue())
-        await ctx.channel.send(embed=embed, view=view)
-        await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 티켓 설정이 완료되었습니다."), ephemeral=True)
-        print(f"[Command | Ticket] 사용자가 티켓을 설정했습니다. (서버: {ctx.guild.name}, 요청자: {ctx.author.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    @Ticket_CMDGroup.command(name="삭제", description="보관된 모든 티켓을 삭제합니다. 관리자 권한을 요구합니다.")
+    @discord.default_permissions(administrator=True)
+    async def Purge_Tickets(self, ctx):
+        # 설정 불러오기
+        Settings = Load_Data(self.Settings_Data_Path)
+        Archive_Category = ctx.guild.get_channel(Settings.get(str(ctx.guild.id), {}).get("Ticket", {}).get("Archive_Category_ID"))
 
-    @Ticket.command(name="초기화", description="닫힌 모든 티켓을 삭제합니다. 관리자 권한을 요구합니다.")
-    @commands.has_permissions(administrator=True)
-    async def delete_all_closed_tickets(self, ctx: discord.ApplicationContext):
-        deleted_count = 0
+        # 보관 카테고리 확인
+        if not Archive_Category:
+            return await ctx.respond(embed=Error_Dialog_Embed("보관 카테고리가 설정되어 있지 않습니다."), ephemeral=True)
 
-        for channel in ctx.guild.text_channels:
-            if channel.name.startswith("closed-"):
-                try:
-                    await channel.delete(reason=f"Delete all closed tickets by {ctx.author}")
-                    deleted_count += 1
-                except:
-                    continue
+        # 보관된 티켓 채널 확인
+        Target_Channels = [Channel for Channel in Archive_Category.channels if isinstance(Channel, discord.TextChannel) and Channel.name.startswith("closed-")]
+        
+        if not Target_Channels:
+            return await ctx.respond(embed=Error_Dialog_Embed("보관된 티켓이 없습니다."), ephemeral=True)
 
-        await ctx.respond(embed=discord.Embed(description=f":white_check_mark: 닫힌 티켓 {deleted_count}개를 삭제했습니다."), ephemeral=True)
+        View = Ticket_Cleanup_Confirm_View(ctx.author)
 
-class TicketView(discord.ui.View):
-    def __init__(self, bot):
-        super().__init__(timeout=None)
-        self.bot = bot
+        # 티켓 전체 삭제 확인
+        await ctx.respond(embed=discord.Embed(
+            title="🗑️ 티켓 전체 삭제",
+            description=f"정말로 보관된 티켓 **{len(Target_Channels)}개**를 모두 삭제하시겠습니까? **로그 채널이 지정된 경우 모든 티켓의 대화 내역이 로그 채널에 아카이브됩니다.**",
+            color=discord.Color.red()
+        ).set_footer(text="티켓을 삭제하면 티켓 생성자와 서버 관리자만 접근할 수 있는 비공개 채널이 삭제됩니다."), view=View, ephemeral=True)
 
-    def get_next_ticket_number(self, guild: discord.Guild):
-        if os.path.exists("ticket_data.json"):
-            with open("ticket_data.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-            guild_data = data.get(str(guild.id))
-            if guild_data:
-                return guild_data.get("last_ticket", 0) + 1
-        return 1
+        await View.wait()
 
-    @discord.ui.button(label="🎫 티켓 열기", style=discord.ButtonStyle.green, custom_id="create_ticket")
-    async def create_ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
-        guild = interaction.guild
-        member = interaction.user
-        open_member = interaction.user
+        # 티켓 전체 삭제 실행
+        if not View.Value:
+            return await ctx.followup.edit(embed=Success_Dialog_Embed("티켓 전체 삭제를 취소했습니다."), view=None)
 
-        with open(ticket_settings_file, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-        guild_settings = settings.get(str(guild.id))
-        if not guild_settings:
-            return await interaction.response.send_message(embed=discord.Embed(description=":warning: 티켓 설정이 완료되지 않았습니다. 서버 관리자에게 문의하세요."), ephemeral=True)
+        Deleted_Count = 0
+        Progress_Msg = await ctx.followup.send(embed=Success_Dialog_Embed(f"티켓 전체 삭제를 시작합니다. (0/{len(Target_Channels)})"), ephemeral=True)
+        
+        for Channel in Target_Channels:
+            try:
+                # 티켓 아카이브 생성
+                await Generate_Ticket_Archive(Channel, ctx.author)
+                # 채널 삭제
+                await Channel.delete(reason=f"티켓 전체 삭제 (요청자: {ctx.author.name})")
+                Deleted_Count += 1
+                
+                # 진행률 표시
+                if Deleted_Count % 5 == 0:
+                    await Progress_Msg.edit(embed=Success_Dialog_Embed(f"티켓 전체 삭제를 진행 중입니다. ({Deleted_Count}/{len(Target_Channels)})"))
+            except:
+                continue
 
-        support_role = guild.get_role(guild_settings["support_role"])
-        ticket_category = guild.get_channel(guild_settings["ticket_category"])
-        closed_category = guild.get_channel(guild_settings["closed_category"])
-        log_channel = guild.get_channel(guild_settings["log_channel"]) if guild_settings.get("log_channel") else None
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            member: discord.PermissionOverwrite(view_channel=True, send_messages=True)
-        }
-        if support_role:
-            overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
-
-        ticket_number = self.get_next_ticket_number(guild)
-        channel_name = f"ticket-{ticket_number:04d}"
-
-        channel = await guild.create_text_channel(
-            name=channel_name,
-            category=ticket_category,
-            overwrites=overwrites,
-            reason=f"Ticket #{ticket_number} opened by {member}"
-        )
-        self.save_ticket(guild.id, ticket_number, member.id, channel.id, closed_category.id, log_channel.id if log_channel else None)
-
-        mention_roles = []
-        bot_roles = set()
-        for member in guild.members:
-            if member.bot:
-                bot_roles.update(member.roles)
-
-        if support_role:
-            mention_roles.append(support_role)
-
-        for role in guild.roles:
-            if role.permissions.administrator and role != guild.default_role and role not in bot_roles:
-                mention_roles.append(role)
-
-        mention_text = ", ".join(role.mention for role in mention_roles) if mention_roles else None
-
-        embed = discord.Embed(title="🎫 티켓이 생성되었습니다.", description=f"{open_member.mention}님, 문의사항을 입력해주세요. {mention_text}이(가) 해결해 드리겠습니다.", color=discord.Color.blue())
-        await channel.send(embed=embed, view=CloseTicketView(channel, guild.id, support_role.id if support_role else None))
-
-        await interaction.response.send_message(embed=discord.Embed(description=f":white_check_mark: {channel.mention} 티켓을 생성했습니다."), ephemeral=True)
-        print(f"[Command | Ticket] 사용자가 티켓을 생성했습니다. (서버: {interaction.guild.name}, 사용자: {open_member.display_name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-
-    def save_ticket(self, guild_id, number, user_id, channel_id, closed_category_id, log_channel_id):
-        data = {}
-        if os.path.exists("ticket_data.json"):
-            with open("ticket_data.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-        guild_key = str(guild_id)
-        if guild_key not in data:
-            data[guild_key] = {
-                "last_ticket": 0,
-                "tickets": {}
-            }
-        data[guild_key]["last_ticket"] = number
-        data[guild_key]["tickets"][str(number)] = {
-            "user": user_id,
-            "channel": channel_id,
-            "closed_category": closed_category_id,
-            "log_channel": log_channel_id
-        }
-        with open("ticket_data.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-class CloseTicketView(discord.ui.View):
-    def __init__(self, channel, guild_id, support_role_id=None):
-        super().__init__(timeout=None)
-        self.channel = channel
-        self.guild_id = guild_id
-        self.support_role_id = support_role_id
-
-    @discord.ui.button(label="🔒 티켓 닫기 (관리자 전용)", style=discord.ButtonStyle.red, custom_id="close_ticket")
-    async def close_ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.response.defer()
-
-        channel_name = interaction.channel.name
-        match = re.search(r'\d+', channel_name)
-        ticket_number = int(match.group()) if match else None
-
-        with open("ticket_data.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-        ticket_info = data[str(self.guild_id)]["tickets"].get(str(ticket_number))
-        if not ticket_info:
-            return await interaction.followup.send_message(embed=discord.Embed(description=":warning: 티켓 정보를 찾을 수 없습니다."), ephemeral=True)
-
-        user_roles = [role.id for role in interaction.user.roles]
-        is_admin = any(role.permissions.administrator for role in interaction.user.roles)
-        has_support = self.support_role_id in user_roles if self.support_role_id else False
-
-        if not (is_admin or has_support):
-            return await interaction.followup.send_message(embed=discord.Embed(description=":warning: 티켓 관리 권한이 없습니다."), ephemeral=True)
-
-        closed_category = interaction.guild.get_channel(ticket_info["closed_category"])
-        log_channel = interaction.guild.get_channel(ticket_info["log_channel"]) if ticket_info.get("log_channel") else None
-
-        if closed_category:
-            new_channel_name = interaction.channel.name.replace("ticket-", "closed-", 1)
-            await interaction.channel.edit(category=closed_category, name=new_channel_name, reason=f"Ticket #{ticket_number} closed")
-
-        messages = []
-        async for msg in self.channel.history(limit=None, oldest_first=True):
-            timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-            messages.append(f"[{timestamp}] {msg.author.display_name}({msg.author.name}): {msg.content}")
-        log_text = "\n".join(messages)
-
-        if log_channel:
-            import io
-            await log_channel.send(
-                content=f":white_check_mark: {channel_name}의 아카이브입니다.",
-                file=discord.File(io.StringIO(log_text), filename=f"{self.channel.name}.txt")
-            )
-
-        overwrites = self.channel.overwrites
-        for target in overwrites:
-            overwrites[target].view_channel = False
-        await self.channel.edit(overwrites=overwrites)
-
-        del data[str(self.guild_id)]["tickets"][str(ticket_number)]
-        with open("ticket_data.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-        await interaction.followup.send(embed=discord.Embed(description=":white_check_mark: 티켓을 닫고 비공개로 설정했습니다. 아래 버튼을 눌러 티켓을 삭제할 수 있습니다."), view=DeleteTicketView(self.channel, self.guild_id, self.support_role_id))
-        print(f"[Command | Ticket] 사용자가 티켓을 보관했습니다. (서버: {interaction.guild.name}, 요청자: {interaction.user.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-
-class DeleteTicketView(discord.ui.View):
-    def __init__(self, channel, guild_id, support_role_id=None):
-        super().__init__(timeout=None)
-        self.channel = channel
-        self.guild_id = guild_id
-        self.support_role_id = support_role_id
-
-    @discord.ui.button(label="🗑️ 티켓 삭제", style=discord.ButtonStyle.danger, custom_id="delete_ticket")
-    async def close_ticket(self, button: discord.ui.Button, interaction: discord.Interaction):
-        user_roles = [role.id for role in interaction.user.roles]
-        is_admin = any(role.permissions.administrator for role in interaction.user.roles)
-        has_support = self.support_role_id in user_roles if self.support_role_id else False
-    
-        if not (is_admin or has_support):
-            return await interaction.response.send_message(embed=discord.Embed(description=":warning: 티켓 관리 권한이 없습니다."), ephemeral=True)
-
-        channel_name = interaction.channel.name
-        match = re.search(r'\d+', channel_name)
-        ticket_number = int(match.group()) if match else None
-
-        await interaction.channel.delete(reason=f"Channel deleted by {interaction.user}")
-        print(f"[Command | Ticket] 사용자가 티켓을 삭제했습니다. (서버: {interaction.guild.name}, 요청자: {interaction.user.name}, 일시: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-
-        with open("ticket_data.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-        ticket_info = data[str(self.guild_id)]["tickets"].get(str(ticket_number))
-
-        if ticket_info:
-            del data[str(self.guild_id)]["tickets"][str(ticket_number)]
-            with open("ticket_data.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            await Progress_Msg.edit(embed=Success_Dialog_Embed(f"보관된 티켓 **{Deleted_Count}개**를 모두 삭제했습니다."), view=None)
 
 def setup(bot):
-    bot.add_cog(ticket(bot))
+    bot.add_cog(Ticket(bot))
