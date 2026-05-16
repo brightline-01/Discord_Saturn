@@ -31,7 +31,7 @@ class Launcher(commands.Cog):
         # 슬래쉬 커맨드 동기화 스크립트
         if DEBUG_GUILD:
             await self.bot.sync_commands(guild_ids=[DEBUG_GUILD])
-            print(f'[Launcher] 슬래쉬 커맨드를 설정된 서버에 동기화했습니다.')
+            print('[Launcher] 슬래쉬 커맨드를 설정된 서버에 동기화했습니다.')
         else:
             await self.bot.sync_commands()
             print('[Launcher] 슬래쉬 커맨드를 전역으로 동기화했습니다.')
