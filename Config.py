@@ -1,4 +1,4 @@
 APP_NAME = "Saturn"
 APP_VER = "v2.1_stable"
-APP_DEV = "세린 (.__serin__.)"
+APP_DEV = "Quasar (__quasar.__)"
 DEBUG_GUILD = None
