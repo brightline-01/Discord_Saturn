@@ -1,7 +1,6 @@
 import discord, sys, os, subprocess
 from discord.ext import commands
 from Resources import Print_Log, Error_Dialog_Embed, Success_Dialog_Embed
-from Config import APP_NAME
 
 class System(commands.Cog):
     def __init__(self, bot):
@@ -54,7 +53,7 @@ class System(commands.Cog):
                     if not os.path.exists("Logs"):
                         return await message.reply(embed=Error_Dialog_Embed("Logs 폴더가 존재하지 않습니다."))
 
-                    Log_Files = [os.path.join("Logs", f) for f in os.listdir("Logs") if os.path.isfile(os.path.join(f"Log", f))]
+                    Log_Files = [os.path.join("Logs", f) for f in os.listdir("Logs") if os.path.isfile(os.path.join("Log", f))]
                     if not Log_Files:
                         return await message.reply(embed=Error_Dialog_Embed("로그 파일이 존재하지 않습니다."))
 
