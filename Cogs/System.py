@@ -1,6 +1,6 @@
 import discord, sys, os, subprocess
 from discord.ext import commands
-from Resources import Print_Log, Error_Dialog_Embed, Success_Dialog_Embed
+from Resources import APP_NAME, Print_Log, Error_Dialog_Embed, Success_Dialog_Embed
 
 class System(commands.Cog):
     def __init__(self, bot):
@@ -42,6 +42,29 @@ class System(commands.Cog):
                         await message.reply(embed=Error_Dialog_Embed(f"업데이트 중 오류가 발생했습니다."))
                 except Exception as e:
                     await message.reply(embed=Error_Dialog_Embed(f"업데이트 중 오류가 발생했습니다 ({e})"))
+            else:
+                await message.reply(embed=Error_Dialog_Embed("애플리케이션 소유자만 실행할 수 있습니다."))
+
+        # 로그 명령어
+        if message.content == "!로그":
+            # 애플리케이션 소유자 검증
+            if await self.bot.is_owner(message.author):
+                try:
+                    if not os.path.exists("Logs"):
+                        return await message.reply(embed=Error_Dialog_Embed("Logs 폴더가 존재하지 않습니다."))
+
+                    Log_Files = [os.path.join("Logs", f) for f in os.listdir("Logs") if os.path.isfile(os.path.join(f"{APP_NAME}_Log_", f))]
+                    if not Log_Files:
+                        return await message.reply(embed=Error_Dialog_Embed("로그 파일이 존재하지 않습니다."))
+
+                    # 가장 최근에 수정된 파일 찾기
+                    Latest_Log = max(Log_Files, key=os.path.getmtime)
+
+                    # Discord 파일로 전송
+                    await message.reply(embed=Success_Dialog_Embed(f"로그 파일을 전송합니다."), file=discord.File(Latest_Log))
+                    Print_Log("System", "로그 파일을 전송했습니다.", "다이렉트 메세지", message.author.name)
+                except Exception as e:
+                    await message.reply(embed=Error_Dialog_Embed(f"로그 파일을 전송하는 중 오류가 발생했습니다 ({e})"))
             else:
                 await message.reply(embed=Error_Dialog_Embed("애플리케이션 소유자만 실행할 수 있습니다."))
 
