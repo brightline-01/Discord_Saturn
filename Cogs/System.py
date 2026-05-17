@@ -1,7 +1,6 @@
 import discord, sys, os, subprocess
 from discord.ext import commands
 from Resources import Print_Log, Error_Dialog_Embed, Success_Dialog_Embed
-from Config import APP_NAME
 
 class System(commands.Cog):
     def __init__(self, bot):
