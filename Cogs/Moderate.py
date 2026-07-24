@@ -288,7 +288,7 @@ class Moderate(commands.Cog):
             await ctx.respond(embed=Error_Dialog_Embed(f"역할을 {Action}하는 중 오류가 발생했습니다. ({e})"), ephemeral=True)
 
     # 사용자 ID 파싱
-    def Parse_User_ID(user: str):
+    def Parse_User_ID(self, user: str):
         Match = re.search(r"\d+", user)
         return int(Match.group()) if Match else None
 
