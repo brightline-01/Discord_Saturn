@@ -18,14 +18,10 @@ class Info(commands.Cog):
         # 현재 서버의 Member 객체 가져오기 (없으면 None)
         Guild_Member = ctx.guild.get_member(Member.id)
 
-        if Guild_Member:
-            Display_Name = discord.utils.escape_markdown(f"{Guild_Member.display_name} (앱)" if Guild_Member.bot else Guild_Member.display_name)
-            Joined_At = Guild_Member.joined_at.strftime("%Y년 %m월 %d일 %H:%M:%S")
-            Role_List = [role.mention for role in reversed(Guild_Member.roles) if role.name != "@everyone"]
-        else:
-            Display_Name = discord.utils.escape_markdown(f"{Member.display_name} (앱)" if Member.bot else Member.display_name)
-            Joined_At = "이 서버에 속하지 않음"
-            Role_List = []
+        # 사용자 정보 생성
+        Display_Name = discord.utils.escape_markdown(f"{Member.display_name} (앱)" if Member.bot else Member.display_name)
+        Joined_At = (Guild_Member.joined_at.strftime("%Y년 %m월 %d일 %H:%M:%S") if Guild_Member else "이 서버에 속하지 않음")
+        Role_List = ([role.mention for role in reversed(Guild_Member.roles) if role.name != "@everyone"] if Guild_Member else [])
 
         # Embed 생성
         embed = discord.Embed(title=f"👤 {Display_Name}님의 사용자 정보", color=discord.Color.blue())
