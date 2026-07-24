@@ -249,7 +249,7 @@ class Moderate(commands.Cog):
         Save_Data(self.Timeout_Data_Path, Timeouts)
     
     # 역할 제어
-    async def Control_Role(ctx, Member, Role, Reason, Remove=False):
+    async def Control_Role(self, ctx, Member, Role, Reason, Remove=False):
         Action = "해제" if Remove else "부여"
 
         if not ctx.author.guild_permissions.manage_roles:
@@ -293,7 +293,7 @@ class Moderate(commands.Cog):
         return int(Match.group()) if Match else None
 
     # 관리 메세지 임베드 생성
-    async def Create_Moderate_Embed(ctx, title, member, reason, color):
+    async def Create_Moderate_Embed(self, ctx, title, member, reason, color):
         embed = discord.Embed(title=title, color=color)
         embed.add_field(name="사용자", value=member.display_name, inline=True)
         embed.add_field(name="사유", value=reason, inline=True)
