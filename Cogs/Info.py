@@ -11,12 +11,21 @@ class Info(commands.Cog):
 
     # /정보 사용자 [@사용자]
     @Info_CMDGroup.command(name="사용자", description="사용자의 정보를 표시합니다.")
-    async def Info_Member(self, ctx, Member: discord.Option(discord.Member, name="사용자", description="정보를 표시할 사용자 (선택)", required=False) = None):
+    async def Info_Member(self, ctx, Member: discord.Option(discord.User, name="사용자", description="정보를 표시할 사용자 (선택)", required=False) = None):
         if Member is None:   # 멤버가 None인 경우
             Member = ctx.author   # 멤버를 명령어 사용자로 지정
 
-        Role_List = [role.mention for role in reversed(Member.roles) if role.name != "@everyone"]   # 보유한 역할 리스트를 생성
-        Display_Name = discord.utils.escape_markdown(f"{Member.display_name} (앱)" if Member.bot else Member.display_name)   # 멤버 이름을 처리
+        # 현재 서버의 Member 객체 가져오기 (없으면 None)
+        Guild_Member = ctx.guild.get_member(Member.id)
+
+        if Guild_Member:
+            Display_Name = discord.utils.escape_markdown(f"{Guild_Member.display_name} (앱)" if Guild_Member.bot else Guild_Member.display_name)
+            Joined_At = Guild_Member.joined_at.strftime("%Y년 %m월 %d일 %H:%M:%S")
+            Role_List = [role.mention for role in reversed(Guild_Member.roles) if role.name != "@everyone"]
+        else:
+            Display_Name = discord.utils.escape_markdown(f"{Member.display_name} (앱)" if Member.bot else Member.display_name)
+            Joined_At = "이 서버에 속하지 않음"
+            Role_List = []
 
         # Embed 생성
         embed = discord.Embed(title=f"👤 {Display_Name}님의 사용자 정보", color=discord.Color.blue())
@@ -24,7 +33,7 @@ class Info(commands.Cog):
         embed.add_field(name="별명", value=discord.utils.escape_markdown(Member.display_name), inline=True)
         embed.add_field(name="사용자 ID", value=Member.id, inline=True)
         embed.add_field(name="계정 생성일", value=Member.created_at.strftime("%Y년 %m월 %d일 %H:%M:%S"), inline=True)
-        embed.add_field(name="서버 가입일", value=Member.joined_at.strftime("%Y년 %m월 %d일 %H:%M:%S"), inline=True)
+        embed.add_field(name="서버 가입일", value=Joined_At, inline=True)
         embed.add_field(name="서버 역할", value=", ".join(Role_List[:20]) if Role_List else "역할 없음", inline=True)
         embed.add_field(name="애플리케이션 여부", value="예" if Member.bot else "아니요", inline=True)
         embed.set_footer(text=f"일시: {Current_Time()}")
