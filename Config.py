@@ -1,4 +1,4 @@
 APP_NAME = "Saturn (Preview Channel)"
-APP_VER = "v2.1_preview"
-APP_DEV = "Quasar (__quasar.__)"
-DEBUG_GUILD = 1503430812073201674
+APP_VER = "v2.2_preview"
+APP_DEV = "Xenith (xeni._th)"
+DEBUG_GUILD = 1532929365547942008
