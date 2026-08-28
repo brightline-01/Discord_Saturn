@@ -321,6 +321,7 @@ class Music(commands.Cog):
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn'
             }
+        self.Pytubefix_Client = "WEB"
         self.Pytubefix_Options = {'only_audio': True, 'abr': '160kbps'}
         self.Players = {}
  
@@ -418,7 +419,7 @@ class Music(commands.Cog):
         Added = 0
  
         # 재생 목록 객체 생성
-        for YT in list(Playlist(URL).videos)[1:]:
+        for YT in list(Playlist(URL, client=self.Pytubefix_Client).videos)[1:]:
             # 스트림 필터링
             Stream = YT.streams.filter(**self.Pytubefix_Options).order_by("abr").desc().first()
  
@@ -507,7 +508,7 @@ class Music(commands.Cog):
         try:
             # 재생 목록 URL 검증
             if Check_Playlist_URL(URL):
-                Videos = list(Playlist(URL).videos)
+                Videos = list(Playlist(URL, client=self.Pytubefix_Client).videos)
 
                 # 재생 목록이 존재하는지 확인
                 if not Videos:
@@ -547,7 +548,7 @@ class Music(commands.Cog):
                 return
  
             # YouTube URL 검증
-            YT = YouTube(URL) if Check_YouTube_URL(URL) else (Search(URL).results[0] if Search(URL).results else None)
+            YT = YouTube(URL, client=self.Pytubefix_Client) if Check_YouTube_URL(URL) else (Search(URL, client=self.Pytubefix_Client).results[0] if Search(URL, client=self.Pytubefix_Client).results else None)
             
             if not YT:
                 return await ctx.respond(embed=Error_Dialog_Embed("검색 결과를 찾을 수 없습니다."), ephemeral=True)
@@ -579,7 +580,7 @@ class Music(commands.Cog):
             return
         
         # 검색
-        Search_Obj = Search(Query)
+        Search_Obj = Search(Query, client=self.Pytubefix_Client)
         Results = Search_Obj.results[:Index]
  
         # 검색 결과 확인
